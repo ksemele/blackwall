@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/config"
+	"github.com/ksemele/blackwall/internal/config"
 )
 
 // serve starts an HTTP test server and returns a client pointed at it.

@@ -6,11 +6,11 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/indexer"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/safe"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/styles"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/table"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/wazuh"
+	"github.com/ksemele/blackwall/internal/indexer"
+	"github.com/ksemele/blackwall/internal/ui/safe"
+	"github.com/ksemele/blackwall/internal/ui/styles"
+	"github.com/ksemele/blackwall/internal/ui/table"
+	"github.com/ksemele/blackwall/internal/wazuh"
 )
 
 var cols = []table.Col{

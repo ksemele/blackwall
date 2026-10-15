@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/indexer"
+	"github.com/ksemele/blackwall/internal/indexer"
 )
 
 func richAlert() indexer.Alert {

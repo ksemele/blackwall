@@ -7,11 +7,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/footer"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/statusbar"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/styles"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/tabbar"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/views"
+	"github.com/ksemele/blackwall/internal/ui/footer"
+	"github.com/ksemele/blackwall/internal/ui/statusbar"
+	"github.com/ksemele/blackwall/internal/ui/styles"
+	"github.com/ksemele/blackwall/internal/ui/tabbar"
+	"github.com/ksemele/blackwall/internal/views"
 )
 
 type Deps struct {

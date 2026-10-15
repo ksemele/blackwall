@@ -1,4 +1,4 @@
-module github.com/greengrunt/blackwall/tools/blackwall
+module github.com/ksemele/blackwall
 
 go 1.26.2
 

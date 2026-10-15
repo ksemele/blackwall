@@ -8,7 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/wazuh"
+	"github.com/ksemele/blackwall/internal/wazuh"
 )
 
 type fakeProcessesClient struct {

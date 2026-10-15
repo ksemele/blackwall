@@ -7,9 +7,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/app"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/footer"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/styles"
+	"github.com/ksemele/blackwall/internal/app"
+	"github.com/ksemele/blackwall/internal/ui/footer"
+	"github.com/ksemele/blackwall/internal/ui/styles"
 )
 
 // View is the help screen.  It is pushed onto the view stack when the user

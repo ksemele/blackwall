@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/config"
+	"github.com/ksemele/blackwall/internal/config"
 )
 
 // Probe tests whether the Wazuh manager API at sub is reachable.

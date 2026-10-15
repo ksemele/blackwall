@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/config"
+	"github.com/ksemele/blackwall/internal/config"
 )
 
 func TestArgv(t *testing.T) {

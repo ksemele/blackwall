@@ -6,8 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/app"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/config"
+	"github.com/ksemele/blackwall/internal/app"
+	"github.com/ksemele/blackwall/internal/config"
 )
 
 func sampleConfig() config.Config {

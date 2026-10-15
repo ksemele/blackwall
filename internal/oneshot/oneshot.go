@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/wazuh"
+	"github.com/ksemele/blackwall/internal/wazuh"
 )
 
 type Lister interface {

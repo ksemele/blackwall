@@ -10,8 +10,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/app"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/indexer"
+	"github.com/ksemele/blackwall/internal/app"
+	"github.com/ksemele/blackwall/internal/indexer"
 )
 
 // fakeSearcher returns scripted results in order (repeating the last one once

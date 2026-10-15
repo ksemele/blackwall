@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/config"
+	"github.com/ksemele/blackwall/internal/config"
 )
 
 func newServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {

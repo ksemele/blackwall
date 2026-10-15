@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/indexer"
+	"github.com/ksemele/blackwall/internal/indexer"
 )
 
 func al(id string, sec int) indexer.Alert {

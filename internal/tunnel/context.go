@@ -3,7 +3,7 @@ package tunnel
 import (
 	"context"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/config"
+	"github.com/ksemele/blackwall/internal/config"
 )
 
 // Loopback is where forwarded ports listen.

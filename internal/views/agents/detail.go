@@ -7,11 +7,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/app"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/footer"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/styles"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/tabbar"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/wazuh"
+	"github.com/ksemele/blackwall/internal/app"
+	"github.com/ksemele/blackwall/internal/ui/footer"
+	"github.com/ksemele/blackwall/internal/ui/styles"
+	"github.com/ksemele/blackwall/internal/ui/tabbar"
+	"github.com/ksemele/blackwall/internal/wazuh"
 )
 
 // statusStyled returns the agent status colored to match the agents-list view:

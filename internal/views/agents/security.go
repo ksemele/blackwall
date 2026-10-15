@@ -8,8 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/styles"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/wazuh"
+	"github.com/ksemele/blackwall/internal/ui/styles"
+	"github.com/ksemele/blackwall/internal/wazuh"
 )
 
 // SecurityClient is the subset of wazuh.Client required by SecurityModel.

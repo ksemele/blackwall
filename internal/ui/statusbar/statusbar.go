@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/styles"
+	"github.com/ksemele/blackwall/internal/ui/styles"
 )
 
 type State struct {

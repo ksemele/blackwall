@@ -9,9 +9,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/app"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/tickcmd"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/wazuh"
+	"github.com/ksemele/blackwall/internal/app"
+	"github.com/ksemele/blackwall/internal/tickcmd"
+	"github.com/ksemele/blackwall/internal/wazuh"
 )
 
 type fakeClient struct {

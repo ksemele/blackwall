@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/config"
+	"github.com/ksemele/blackwall/internal/config"
 )
 
 type Client struct {

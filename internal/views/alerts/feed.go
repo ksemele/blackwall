@@ -1,6 +1,6 @@
 package alerts
 
-import "github.com/greengrunt/blackwall/tools/blackwall/internal/indexer"
+import "github.com/ksemele/blackwall/internal/indexer"
 
 const (
 	initialSize = 200

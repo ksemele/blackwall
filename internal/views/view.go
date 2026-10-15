@@ -5,7 +5,7 @@ package views
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/footer"
+	"github.com/ksemele/blackwall/internal/ui/footer"
 )
 
 type View interface {

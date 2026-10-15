@@ -10,10 +10,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/app"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/config"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/indexer"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/footer"
+	"github.com/ksemele/blackwall/internal/app"
+	"github.com/ksemele/blackwall/internal/config"
+	"github.com/ksemele/blackwall/internal/indexer"
+	"github.com/ksemele/blackwall/internal/ui/footer"
 )
 
 type Searcher interface {

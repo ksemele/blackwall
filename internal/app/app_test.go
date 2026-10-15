@@ -9,9 +9,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/footer"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/statusbar"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/views"
+	"github.com/ksemele/blackwall/internal/ui/footer"
+	"github.com/ksemele/blackwall/internal/ui/statusbar"
+	"github.com/ksemele/blackwall/internal/views"
 )
 
 // fakeView is a minimal View implementation for testing the router.

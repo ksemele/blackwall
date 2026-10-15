@@ -3,7 +3,7 @@ package agents
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/footer"
+	"github.com/ksemele/blackwall/internal/ui/footer"
 )
 
 // subView is an in-package interface for tab-scoped sub-models.

@@ -9,14 +9,14 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/indexer"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/sessions"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/footer"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/safe"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/scroll"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/styles"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/table"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/wazuh"
+	"github.com/ksemele/blackwall/internal/indexer"
+	"github.com/ksemele/blackwall/internal/sessions"
+	"github.com/ksemele/blackwall/internal/ui/footer"
+	"github.com/ksemele/blackwall/internal/ui/safe"
+	"github.com/ksemele/blackwall/internal/ui/scroll"
+	"github.com/ksemele/blackwall/internal/ui/styles"
+	"github.com/ksemele/blackwall/internal/ui/table"
+	"github.com/ksemele/blackwall/internal/wazuh"
 )
 
 // AlertSearcher is the indexer capability the agent card needs; nil when the
@@ -26,7 +26,7 @@ type AlertSearcher interface {
 }
 
 // sessionsRuleID is the manager rule that stores `last` snapshots
-// (blackwall-eye role wazuh-manager, blackwall_rules.xml).
+// (blackwall-stack: blackwall-eye role wazuh-manager, blackwall_rules.xml).
 const sessionsRuleID = "100100"
 
 type sessionsLoadedMsg struct {

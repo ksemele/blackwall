@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/config"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/tunnel"
+	"github.com/ksemele/blackwall/internal/config"
+	"github.com/ksemele/blackwall/internal/tunnel"
 )
 
 // liveTunnel owns the active context's ssh tunnel (nil for direct contexts).

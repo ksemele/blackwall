@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/config"
+	"github.com/ksemele/blackwall/internal/config"
 )
 
 // New returns an *http.Client honouring insecure_skip_verify and ca_file.

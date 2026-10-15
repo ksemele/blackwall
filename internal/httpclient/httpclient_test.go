@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/config"
+	"github.com/ksemele/blackwall/internal/config"
 )
 
 // tlsServer serves on 127.0.0.1 with a certificate issued for

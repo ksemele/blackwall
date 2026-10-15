@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/styles"
+	"github.com/ksemele/blackwall/internal/ui/styles"
 )
 
 // Render returns the tab strip given an ordered list of view names,

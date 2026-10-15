@@ -16,18 +16,18 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/app"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/config"
-	bwlog "github.com/greengrunt/blackwall/tools/blackwall/internal/log"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/oneshot"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/tunnel"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/ui/statusbar"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/views"
-	agentsview "github.com/greengrunt/blackwall/tools/blackwall/internal/views/agents"
-	alertsview "github.com/greengrunt/blackwall/tools/blackwall/internal/views/alerts"
-	ctxview "github.com/greengrunt/blackwall/tools/blackwall/internal/views/contexts"
-	helpview "github.com/greengrunt/blackwall/tools/blackwall/internal/views/help"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/wazuh"
+	"github.com/ksemele/blackwall/internal/app"
+	"github.com/ksemele/blackwall/internal/config"
+	bwlog "github.com/ksemele/blackwall/internal/log"
+	"github.com/ksemele/blackwall/internal/oneshot"
+	"github.com/ksemele/blackwall/internal/tunnel"
+	"github.com/ksemele/blackwall/internal/ui/statusbar"
+	"github.com/ksemele/blackwall/internal/views"
+	agentsview "github.com/ksemele/blackwall/internal/views/agents"
+	alertsview "github.com/ksemele/blackwall/internal/views/alerts"
+	ctxview "github.com/ksemele/blackwall/internal/views/contexts"
+	helpview "github.com/ksemele/blackwall/internal/views/help"
+	"github.com/ksemele/blackwall/internal/wazuh"
 )
 
 // version is the program version string.  Override at build time with:

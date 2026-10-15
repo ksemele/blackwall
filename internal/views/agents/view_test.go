@@ -5,7 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/app"
+	"github.com/ksemele/blackwall/internal/app"
 )
 
 // The detail model is created on Enter, long after the terminal reported its

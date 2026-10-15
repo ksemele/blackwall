@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/config"
-	"github.com/greengrunt/blackwall/tools/blackwall/internal/httpclient"
+	"github.com/ksemele/blackwall/internal/config"
+	"github.com/ksemele/blackwall/internal/httpclient"
 )
 
 // Client talks to the Wazuh indexer's search API.
