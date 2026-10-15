@@ -1,0 +1,34 @@
+name: Feature request
+description: Suggest a view, command, key or config option.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What do you want to see or do in blackwall that you cannot today? What do you use instead (dashboard, API, shell)?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How it could look. Keys, a view, a palette command, a config option. A text mockup is welcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: data
+    attributes:
+      label: Where the data comes from
+      description: Wazuh API endpoint or indexer query, if you know it.
+
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: Would you like to implement it?
+      options:
+        - "yes"
+        - "maybe, with some guidance"
+        - "no"
