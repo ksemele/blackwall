@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or idea
+    url: https://github.com/ksemele/blackwall/discussions
+    about: Ask how to set something up, or discuss an idea before opening an issue.
+  - name: Security vulnerability
+    url: https://github.com/ksemele/blackwall/security/advisories/new
+    about: Report privately, not as a public issue.
+  - name: Wazuh stack and Ansible roles
+    url: https://github.com/ksemele/blackwall-stack/issues
+    about: Issues with the stack itself (roles, lab) belong in blackwall-stack.

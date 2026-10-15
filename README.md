@@ -442,3 +442,10 @@ No runtime required.
 ## Spec
 
 Full design: [`docs/superpowers/specs/2026-05-17-blackwall-tui-design.md`](https://github.com/ksemele/blackwall-stack/blob/main/docs/superpowers/specs/2026-05-17-blackwall-tui-design.md) (in blackwall-stack).
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, running against the lab and
+commit style. Report vulnerabilities privately, as described in
+[SECURITY.md](SECURITY.md).
