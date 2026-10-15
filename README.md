@@ -14,13 +14,21 @@ and exits. Timestamps are shown in local time with UTC in parentheses, e.g.
 
 ## Install
 
-Requires Go 1.26+.
+Homebrew (macOS):
+
+```bash
+brew install --cask ksemele/tap/blackwall
+```
+
+Or with Go 1.26+:
 
 ```bash
 go install github.com/ksemele/blackwall/cmd/blackwall@latest
 ```
 
-The binary lands in `$GOBIN` (defaults to `~/go/bin/`).
+The binary lands in `$GOBIN` (defaults to `~/go/bin/`). Prebuilt archives for
+macOS and Linux (amd64, arm64) are on the
+[releases page](https://github.com/ksemele/blackwall/releases).
 
 ### Short alias `b`
 
@@ -406,6 +414,21 @@ Other useful targets: `make build` (binary into `bin/`), `make test`, `make lint
 
 `make smoke` runs `blackwall --once` against the blackwall-stack lab: it expects
 a checkout at `../blackwall-stack` or in `BLACKWALL_STACK_DIR`.
+
+## Releasing
+
+Pushing a `v*` tag runs [.github/workflows/release.yml](.github/workflows/release.yml):
+GoReleaser builds macOS/Linux archives, publishes a GitHub release and updates
+the cask in [ksemele/homebrew-tap](https://github.com/ksemele/homebrew-tap).
+It needs the repo secret `HOMEBREW_TAP_GITHUB_TOKEN` (fine-grained PAT,
+`ksemele/homebrew-tap` only, Contents read/write).
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+Dry run locally (no upload; the token only has to be set):
+`HOMEBREW_TAP_GITHUB_TOKEN=x goreleaser release --snapshot --clean`.
 
 ## Distribution to remote hosts
 
