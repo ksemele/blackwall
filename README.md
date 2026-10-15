@@ -1,22 +1,37 @@
 # blackwall
 
-k9s-style terminal UI for the Blackwall security project. Today it surfaces
-Wazuh agent state; over time it will gain alerts, modules, and other views.
+k9s-style terminal UI for [Wazuh](https://wazuh.com): agents, inventory, the
+`:alerts` feed and per-agent login Sessions, without the web dashboard.
+
+Works with any Wazuh 4.x manager (tested on 4.14.7); the indexer is optional.
+Wazuh 5.x is not supported yet. Companion of
+[blackwall-stack](https://github.com/ksemele/blackwall-stack), an Ansible-deployed Wazuh stack for small
+fleets, but does not require it.
 
 For scripts and quick checks use `blackwall --once`: it prints the agents table
-and exits (it replaces the former Python `bw-status`). Timestamps are shown in
-local time with UTC in parentheses, e.g. `2026-10-12 09:58 (06:58Z)`.
+and exits. Timestamps are shown in local time with UTC in parentheses, e.g.
+`2026-10-12 09:58 (06:58Z)`.
 
 ## Install
 
-Requires Go 1.22+.
+Requires Go 1.26+.
 
 ```bash
-cd tools/blackwall
-go install ./cmd/blackwall
+go install github.com/ksemele/blackwall/cmd/blackwall@latest
 ```
 
 The binary lands in `$GOBIN` (defaults to `~/go/bin/`).
+
+### Short alias `b`
+
+From a checkout, `make install` also links `b -> blackwall` in `$GOBIN`, unless
+a `b` command already exists (then it says so and skips). Or add a shell alias:
+
+```bash
+alias b=blackwall
+```
+
+`bw` is deliberately not used: it is the Bitwarden CLI.
 
 ## Configure
 
@@ -58,12 +73,12 @@ agent Sessions tab show a hint instead of data.
 
 ### Test environment
 
-`tests/bin/bw-lab up` publishes the Wazuh API on `127.0.0.1:55000`, so a context
+The [blackwall-stack](https://github.com/ksemele/blackwall-stack) lab (`tests/bin/bw-lab up`) publishes the Wazuh API on `127.0.0.1:55000`, so a context
 for the lab is just:
 
 ```yaml
   lab:
-    description: "Docker test env (tests/bin/bw-lab)"
+    description: "Docker test env (blackwall-stack tests/bin/bw-lab)"
     wazuh:
       server:   127.0.0.1
       port:     55000
@@ -153,7 +168,7 @@ the Wazuh indexer (9200). Reach them directly, or through an SSH tunnel that
 ### Via SSH tunnel (loopback-only managers)
 
 When the manager binds the API and indexer to `127.0.0.1` (the hardened layout
-in [blackwall-eye](../../blackwall-eye/README.md)), add an `ssh:` block. Selecting
+in [blackwall-eye](https://github.com/ksemele/blackwall-stack/blob/main/blackwall-eye/README.md)), add an `ssh:` block. Selecting
 the context (`--context`, the picker, `:ctx`) starts the system `ssh` with
 `-N -L 127.0.0.1:<free port>:<server>:<port>` for the API and the indexer, waits
 until the forwarded ports answer, and points the clients at them.
@@ -196,12 +211,13 @@ until the forwarded ports answer, and points the clients at them.
   `ps`. The lab:
 
   ```bash
-  export SSHPASS=blackwall          # lab-only password (tests/README.md)
+  export SSHPASS=blackwall          # lab-only password (blackwall-stack tests/README.md)
   blackwall --context sentinel
   ```
 
-  with `command: [sshpass, -e, ssh, -F, <repo>/tests/docker/ssh_config]` (`-F`
-  needs an absolute path unless you start `blackwall` from the repo root).
+  with `command: [sshpass, -e, ssh, -F, <blackwall-stack>/tests/docker/ssh_config]`
+  (`-F` needs an absolute path unless you start `blackwall` from the
+  blackwall-stack checkout).
   Without `SSHPASS` the tunnel fails with sshpass's message.
 - TLS: the client dials `127.0.0.1:<local port>` but verifies the certificate
   against the configured `server` (an IP is matched against the certificate's
@@ -243,7 +259,7 @@ current: lab
 select_context_on_start: true
 
 contexts:
-  lab:                            # tests/bin/bw-lab, published on loopback
+  lab:                            # blackwall-stack tests/bin/bw-lab, published on loopback
     description: "Docker test env"
     wazuh:
       server: 127.0.0.1
@@ -262,7 +278,7 @@ contexts:
     description: "Lab sentinel (via ssh)"
     ssh:
       host: black-sentinel-03
-      command: [sshpass, -e, ssh, -F, /path/to/blackwall/tests/docker/ssh_config]   # export SSHPASS=blackwall
+      command: [sshpass, -e, ssh, -F, /path/to/blackwall-stack/tests/docker/ssh_config]   # export SSHPASS=blackwall
     wazuh:
       server: 127.0.0.1
       port: 55000
@@ -355,7 +371,7 @@ Agents enrolled into the Wazuh group `docker` (the `wazuh-agent` role does this
 for hosts with `/.dockerenv`) get a red `[docker]` tag in the list and a `DOCKER`
 badge plus warning in detail: container kernels may lack audit support, so
 auditd detections do not fire there. See
-[tests/README.md](../../tests/README.md#container-limitations).
+[blackwall-stack tests/README.md](https://github.com/ksemele/blackwall-stack/blob/main/tests/README.md#container-limitations).
 
 Sessions come from `last` (wtmp), which only records sessions with a PTY:
 non-interactive `ssh host cmd`, scp and Ansible runs do not appear in the
@@ -377,8 +393,7 @@ force a fresh fetch.
 Rebuild and reinstall after local changes:
 
 ```bash
-cd tools/blackwall
-make install              # go install ./cmd/blackwall — refreshes the binary in $GOBIN
+make install              # go install ./cmd/blackwall + the b alias, refreshes $GOBIN
 ```
 
 Clean rebuild:
@@ -388,6 +403,9 @@ make clean && make install
 ```
 
 Other useful targets: `make build` (binary into `bin/`), `make test`, `make lint`.
+
+`make smoke` runs `blackwall --once` against the blackwall-stack lab: it expects
+a checkout at `../blackwall-stack` or in `BLACKWALL_STACK_DIR`.
 
 ## Distribution to remote hosts
 
@@ -400,4 +418,4 @@ No runtime required.
 
 ## Spec
 
-Full design: [`docs/superpowers/specs/2026-05-17-blackwall-tui-design.md`](../../docs/superpowers/specs/2026-05-17-blackwall-tui-design.md).
+Full design: [`docs/superpowers/specs/2026-05-17-blackwall-tui-design.md`](https://github.com/ksemele/blackwall-stack/blob/main/docs/superpowers/specs/2026-05-17-blackwall-tui-design.md) (in blackwall-stack).
