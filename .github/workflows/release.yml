@@ -6,6 +6,9 @@ on:
 
 permissions:
   contents: write
+  # Provenance attestations: OIDC token for Sigstore, write to the attestations API.
+  id-token: write
+  attestations: write
 
 jobs:
   goreleaser:
@@ -17,6 +20,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - uses: anchore/sbom-action/download-syft@v0
       - uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
@@ -26,3 +30,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Fine-grained PAT: ksemele/homebrew-tap, Contents read/write.
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+      # Signs every file listed in checksums.txt (archives, packages, SBOMs).
+      # Verify: gh attestation verify <file> --repo ksemele/blackwall
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-checksums: ./dist/checksums.txt

@@ -30,16 +30,35 @@ import (
 	"github.com/ksemele/blackwall/internal/wazuh"
 )
 
-// version is the program version string.  Override at build time with:
-//
-//	go build -ldflags "-X main.version=v1.2.3" ./cmd/blackwall
-var version = "v0.0.1"
-
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "blackwall:", err)
 		os.Exit(1)
 	}
+}
+
+// options are the command-line flags.
+type options struct {
+	context, config, refresh string
+	once                     bool
+	selectContextOnStart     bool
+	noSelectContext          bool
+	version                  bool
+}
+
+// parseFlags registers the flags on fs and parses args. With an
+// ExitOnError set (flag.CommandLine) it exits on a bad flag or -h.
+func parseFlags(fs *flag.FlagSet, args []string) (options, error) {
+	var o options
+	fs.StringVar(&o.context, "context", "", "override current context")
+	fs.StringVar(&o.config, "config", "", "config file path")
+	fs.StringVar(&o.refresh, "refresh", "", "refresh interval (e.g. 3s)")
+	fs.BoolVar(&o.once, "once", false, "print agents table and exit (no TUI)")
+	fs.BoolVar(&o.selectContextOnStart, "select-context-on-start", false, "force enable startup picker")
+	fs.BoolVar(&o.noSelectContext, "no-select-context", false, "force disable startup picker")
+	fs.BoolVar(&o.version, "version", false, "print version, commit and build date, then exit")
+	err := fs.Parse(args)
+	return o, err
 }
 
 func run() error {
@@ -48,23 +67,17 @@ func run() error {
 	sigCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stopSignals()
 
-	var (
-		flagContext              string
-		flagConfig               string
-		flagRefresh              string
-		flagOnce                 bool
-		flagSelectContextOnStart bool
-		flagNoSelectContext      bool
-	)
-	flag.StringVar(&flagContext, "context", "", "override current context")
-	flag.StringVar(&flagConfig, "config", "", "config file path")
-	flag.StringVar(&flagRefresh, "refresh", "", "refresh interval (e.g. 3s)")
-	flag.BoolVar(&flagOnce, "once", false, "print agents table and exit (no TUI)")
-	flag.BoolVar(&flagSelectContextOnStart, "select-context-on-start", false, "force enable startup picker")
-	flag.BoolVar(&flagNoSelectContext, "no-select-context", false, "force disable startup picker")
-	flag.Parse()
+	opts, err := parseFlags(flag.CommandLine, os.Args[1:])
+	if err != nil {
+		return err
+	}
+	build := currentBuild()
+	if opts.version {
+		fmt.Println(build)
+		return nil
+	}
 
-	cfgPath := flagConfig
+	cfgPath := opts.config
 	if cfgPath == "" {
 		if v := os.Getenv("BW_CONFIG"); v != "" {
 			cfgPath = v
@@ -99,22 +112,22 @@ func run() error {
 		return err
 	}
 
-	ov := config.Overrides{Context: flagContext, ContextWasSet: flagContext != ""}
-	if flagRefresh != "" {
-		d, err := time.ParseDuration(flagRefresh)
+	ov := config.Overrides{Context: opts.context, ContextWasSet: opts.context != ""}
+	if opts.refresh != "" {
+		d, err := time.ParseDuration(opts.refresh)
 		if err != nil {
 			return fmt.Errorf("--refresh: %w", err)
 		}
 		ov.Refresh = &d
 	}
-	if flagSelectContextOnStart && flagNoSelectContext {
+	if opts.selectContextOnStart && opts.noSelectContext {
 		return errors.New("--select-context-on-start and --no-select-context are mutually exclusive")
 	}
 	switch {
-	case flagSelectContextOnStart:
+	case opts.selectContextOnStart:
 		t := true
 		ov.SelectContextOnStart = &t
-	case flagNoSelectContext:
+	case opts.noSelectContext:
 		f := false
 		ov.SelectContextOnStart = &f
 	}
@@ -144,7 +157,7 @@ func run() error {
 
 	// dialCtx is currentCtx, rewritten to 127.0.0.1:<local port> when the
 	// context goes through ssh.
-	if currentCtx.SSH != nil && !flagOnce {
+	if currentCtx.SSH != nil && !opts.once {
 		fmt.Fprintf(os.Stderr, "blackwall: opening ssh tunnel to %s ...\n", currentCtx.SSH.Host)
 	}
 	live.begin()
@@ -155,7 +168,7 @@ func run() error {
 		return fmt.Errorf("interrupted: %w", context.Cause(sigCtx))
 	}
 	if err != nil {
-		if flagOnce || tn == nil {
+		if opts.once || tn == nil {
 			return err
 		}
 		// The TUI starts anyway: the status bar shows the error and
@@ -167,7 +180,7 @@ func run() error {
 		return err
 	}
 
-	if flagOnce {
+	if opts.once {
 		return oneshot.Print(sigCtx, os.Stdout, client)
 	}
 
@@ -264,7 +277,7 @@ func run() error {
 	root := app.New(app.Deps{
 		Views:         registered,
 		InitialView:   initial,
-		Version:       version,
+		Version:       build.Version,
 		HelpView:      helpview.New(),
 		SwitchContext: switchContext,
 		OnRefresh:     live.Retry,

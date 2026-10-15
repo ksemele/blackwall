@@ -3,6 +3,8 @@
 k9s-style terminal UI for [Wazuh](https://wazuh.com): agents, inventory, the
 `:alerts` feed and per-agent login Sessions, without the web dashboard.
 
+![blackwall demo: agents, agent detail, alerts feed, Sessions](docs/demo.gif)
+
 Works with any Wazuh 4.x manager (tested on 4.14.7); the indexer is optional.
 Wazuh 5.x is not supported yet. Companion of
 [blackwall-stack](https://github.com/ksemele/blackwall-stack), an Ansible-deployed Wazuh stack for small
@@ -26,9 +28,57 @@ Or with Go 1.26+:
 go install github.com/ksemele/blackwall/cmd/blackwall@latest
 ```
 
-The binary lands in `$GOBIN` (defaults to `~/go/bin/`). Prebuilt archives for
-macOS and Linux (amd64, arm64) are on the
-[releases page](https://github.com/ksemele/blackwall/releases).
+The binary lands in `$GOBIN` (defaults to `~/go/bin/`). Check what you run with
+`blackwall --version` (version, commit, build date).
+
+### Linux
+
+Each [release](https://github.com/ksemele/blackwall/releases) has `.deb`,
+`.rpm` and `.tar.gz` for amd64 and arm64 (archives for macOS too). The packages
+install the binary to `/usr/bin/blackwall`.
+
+```bash
+VERSION=0.1.0   # release tag without the leading v
+BASE=https://github.com/ksemele/blackwall/releases/download/v$VERSION
+```
+
+Debian, Ubuntu (`arm64` instead of `amd64` on ARM):
+
+```bash
+curl -LO $BASE/blackwall_${VERSION}_amd64.deb
+sudo apt install ./blackwall_${VERSION}_amd64.deb
+```
+
+RHEL, Fedora, Rocky (`aarch64` instead of `x86_64` on ARM):
+
+```bash
+curl -LO $BASE/blackwall-${VERSION}-1.x86_64.rpm
+sudo dnf install ./blackwall-${VERSION}-1.x86_64.rpm
+```
+
+Any distro, tarball:
+
+```bash
+curl -LO $BASE/blackwall_${VERSION}_linux_amd64.tar.gz
+tar -xzf blackwall_${VERSION}_linux_amd64.tar.gz blackwall
+sudo install -m 0755 blackwall /usr/local/bin/
+```
+
+### Verify a download
+
+Every release file is listed in `checksums.txt` and has a
+[build provenance attestation](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations):
+a Sigstore-signed statement that this repo's release workflow built it from the
+tagged commit. Check both before installing:
+
+```bash
+curl -LO $BASE/checksums.txt
+sha256sum --ignore-missing -c checksums.txt     # macOS: shasum -a 256 --ignore-missing -c
+gh attestation verify blackwall_${VERSION}_amd64.deb --repo ksemele/blackwall
+```
+
+`gh attestation verify` needs the [GitHub CLI](https://cli.github.com) (logged
+in). Each archive also has an SPDX SBOM next to it, `<archive>.sbom.json`.
 
 ### Short alias `b`
 
@@ -442,3 +492,10 @@ No runtime required.
 ## Spec
 
 Full design: [`docs/superpowers/specs/2026-05-17-blackwall-tui-design.md`](https://github.com/ksemele/blackwall-stack/blob/main/docs/superpowers/specs/2026-05-17-blackwall-tui-design.md) (in blackwall-stack).
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, running against the lab and
+commit style. Report vulnerabilities privately, as described in
+[SECURITY.md](SECURITY.md).

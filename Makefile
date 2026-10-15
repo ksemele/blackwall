@@ -2,7 +2,7 @@ BIN_DIR := bin
 PKG     := ./...
 GOBIN   := $(or $(shell go env GOBIN),$(shell go env GOPATH)/bin)
 
-.PHONY: build install test lint build-linux smoke clean
+.PHONY: build install test lint build-linux smoke clean demo
 
 build:
 	go build -o $(BIN_DIR)/blackwall ./cmd/blackwall
@@ -30,3 +30,8 @@ smoke:
 
 clean:
 	rm -rf $(BIN_DIR)
+
+# Re-renders docs/demo.gif from docs/demo.tape. Needs VHS and the
+# blackwall-stack lab (tests/bin/bw-lab up).
+demo: build
+	vhs docs/demo.tape
