@@ -19,7 +19,8 @@ builds:
     flags: [-trimpath]
     mod_timestamp: "{{ .CommitTimestamp }}"
     ldflags:
-      - -s -w -X main.version=v{{ .Version }}
+      # Commit date, not build time, keeps the build reproducible.
+      - -s -w -X main.version=v{{ .Version }} -X main.commit={{ .FullCommit }} -X main.date={{ .CommitDate }}
 
 archives:
   - formats: [tar.gz]
