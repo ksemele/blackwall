@@ -56,8 +56,26 @@ sboms:
 checksum:
   name_template: checksums.txt
 
+# Release notes from conventional commits since the previous tag.
 changelog:
+  use: git
   sort: asc
+  abbrev: 7
+  filters:
+    exclude:
+      - "^Merge "
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Documentation
+      regexp: '^.*?docs(\(.+\))??!?:.+$'
+      order: 2
+    - title: Other
+      order: 999
 
 release:
   footer: |
