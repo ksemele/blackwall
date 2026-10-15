@@ -15,19 +15,81 @@ builds:
       - CGO_ENABLED=0
     goos: [darwin, linux]
     goarch: [amd64, arm64]
+    # Reproducible: same commit, same Go version -> same binary.
+    flags: [-trimpath]
+    mod_timestamp: "{{ .CommitTimestamp }}"
     ldflags:
-      - -s -w -X main.version=v{{ .Version }}
+      # Commit date, not build time, keeps the build reproducible.
+      - -s -w -X main.version=v{{ .Version }} -X main.commit={{ .FullCommit }} -X main.date={{ .CommitDate }}
 
 archives:
   - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files: [LICENSE, README.md]
 
+nfpms:
+  - id: packages
+    package_name: blackwall
+    file_name_template: "{{ .ConventionalFileName }}"
+    formats: [deb, rpm]
+    bindir: /usr/bin
+    vendor: ksemele
+    maintainer: Aleksei Krugliak
+    homepage: https://github.com/ksemele/blackwall
+    description: k9s-style terminal UI for Wazuh
+    license: MIT
+    section: admin
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/blackwall/LICENSE
+        file_info:
+          mode: 0644
+      - src: README.md
+        dst: /usr/share/doc/blackwall/README.md
+        file_info:
+          mode: 0644
+    mtime: "{{ .CommitDate }}"
+
+# One SPDX SBOM per archive (needs syft on PATH).
+sboms:
+  - artifacts: archive
+
 checksum:
   name_template: checksums.txt
 
+# Release notes from conventional commits since the previous tag.
 changelog:
+  use: git
   sort: asc
+  abbrev: 7
+  filters:
+    exclude:
+      - "^Merge "
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Documentation
+      regexp: '^.*?docs(\(.+\))??!?:.+$'
+      order: 2
+    - title: Other
+      order: 999
+
+release:
+  footer: |
+    ## Verify
+
+    Every file below has a GitHub build provenance attestation (Sigstore):
+
+    ```bash
+    sha256sum --ignore-missing -c checksums.txt
+    gh attestation verify <file> --repo ksemele/blackwall
+    ```
+
+    SBOMs (SPDX JSON) are attached as `*.sbom.json`.
 
 homebrew_casks:
   - name: blackwall
