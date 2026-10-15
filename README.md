@@ -3,6 +3,8 @@
 k9s-style terminal UI for [Wazuh](https://wazuh.com): agents, inventory, the
 `:alerts` feed and per-agent login Sessions, without the web dashboard.
 
+![blackwall demo: agents, agent detail, alerts feed, Sessions](docs/demo.gif)
+
 Works with any Wazuh 4.x manager (tested on 4.14.7); the indexer is optional.
 Wazuh 5.x is not supported yet. Companion of
 [blackwall-stack](https://github.com/ksemele/blackwall-stack), an Ansible-deployed Wazuh stack for small
