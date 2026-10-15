@@ -1,0 +1,51 @@
+version: 2
+
+project_name: blackwall
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: blackwall
+    main: ./cmd/blackwall
+    binary: blackwall
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version=v{{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: [LICENSE, README.md]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+
+homebrew_casks:
+  - name: blackwall
+    binaries: [blackwall]
+    homepage: https://github.com/ksemele/blackwall
+    description: k9s-style terminal UI for Wazuh
+    caveats: |
+      Short alias (skip it if `b` is already taken in your shell):
+        alias b=blackwall
+    repository:
+      owner: ksemele
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    skip_upload: auto
+    hooks:
+      post:
+        # The binary is not signed or notarized; without this Gatekeeper blocks it.
+        install: |
+          on_macos do
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/blackwall"]
+          end
