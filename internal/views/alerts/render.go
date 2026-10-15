@@ -69,7 +69,7 @@ func (v *View) View() string {
 		return v.card.view()
 	}
 	if v.searcher == nil {
-		return fmt.Sprintf("indexer not configured for context %s — add an `indexer:` section (see tools/blackwall/README.md)\n", v.st.Context)
+		return fmt.Sprintf("indexer not configured for context %s — add an `indexer:` section (see the blackwall README)\n", v.st.Context)
 	}
 
 	var b strings.Builder

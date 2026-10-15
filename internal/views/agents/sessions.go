@@ -162,7 +162,7 @@ var sessionCols = []table.Col{
 func (m *SessionsModel) View() string {
 	switch {
 	case m.idx == nil:
-		return "indexer not configured for this context — Sessions need the Wazuh indexer (see tools/blackwall/README.md)\n"
+		return "indexer not configured for this context — Sessions need the Wazuh indexer (see the blackwall README)\n"
 	case !m.loaded:
 		return "loading sessions…\n"
 	case m.err != "":
