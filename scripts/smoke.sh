@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
-# blackwall smoke test: --once against the docker test env.
+# blackwall smoke test: --once against the blackwall-stack docker test env.
 #
 # Brings up the docker test env (or assumes it is already up), waits for
 # the Wazuh manager API to respond, runs blackwall --once with a tmp
 # config pointing at the manager, greps for an Active agent.
+#
+# The lab lives in a blackwall-stack checkout: BLACKWALL_STACK_DIR, default
+# ../blackwall-stack next to this repo.
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-COMPOSE_DIR="${REPO_ROOT}/tests/docker"
-MANAGER_HOST="${BW_SMOKE_HOST:-172.28.0.10}"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+STACK_DIR="${BLACKWALL_STACK_DIR:-${REPO_ROOT}/../blackwall-stack}"
+COMPOSE_DIR="${STACK_DIR}/tests/docker"
+if [[ ! -f "${COMPOSE_DIR}/docker-compose.yml" ]]; then
+    echo "[smoke] no lab at ${COMPOSE_DIR}: set BLACKWALL_STACK_DIR to a blackwall-stack checkout" >&2
+    exit 1
+fi
+MANAGER_HOST="${BW_SMOKE_HOST:-127.0.0.1}"
 
 cleanup_cfg=""
 trap '[[ -n "$cleanup_cfg" ]] && rm -rf "$cleanup_cfg"' EXIT
@@ -53,7 +61,7 @@ logging:
   file: ${cleanup_cfg}/blackwall.log
 YAML
 
-cd "${REPO_ROOT}/tools/blackwall"
+cd "${REPO_ROOT}"
 go build -o "${cleanup_cfg}/blackwall" ./cmd/blackwall
 
 echo "[smoke] running blackwall --once"
