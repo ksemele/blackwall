@@ -1,0 +1,25 @@
+# Config for docs/demo.tape: the Docker lab from blackwall-stack
+# (tests/bin/bw-lab up). Lab-only default credentials, API on loopback.
+current: lab
+contexts:
+    lab:
+        description: "blackwall-stack Docker lab"
+        wazuh:
+            server: 127.0.0.1
+            port: 55000
+            user: wazuh
+            password: wazuh
+            tls:
+                insecure_skip_verify: true
+        indexer:
+            server: 127.0.0.1
+            port: 9200
+            user: admin
+            password: Blackwall1!
+            tls:
+                insecure_skip_verify: true
+ui:
+    refresh_interval: 3s
+    vim_keys: true
+logging:
+    level: warn
