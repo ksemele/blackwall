@@ -1,0 +1,11 @@
+version: "2"
+
+linters:
+  exclusions:
+    # Unchecked Close, Flush and fmt.Fprint* errors (the golangci-lint v1 default).
+    presets:
+      - std-error-handling
+
+formatters:
+  enable:
+    - gofmt
