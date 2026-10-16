@@ -93,36 +93,36 @@ type OSInfo struct {
 type Process struct {
 	PID       FlexInt `json:"pid"`
 	PPID      int     `json:"ppid"`
-	Name      string `json:"name"`
-	Cmd       string `json:"cmd"`
-	Argvs     string `json:"argvs"`
-	Euser     string `json:"euser"`
-	Ruser     string `json:"ruser"`
-	Nlwp      int    `json:"nlwp"`
-	State     string `json:"state"`
-	Nice      int    `json:"nice"`
-	Priority  int    `json:"priority"`
-	StartTime int64  `json:"start_time"`
-	TTY       int    `json:"tty"`
-	VMSize    int64  `json:"vm_size"`
-	Resident  int64  `json:"resident"`
-	Share     int64  `json:"share"`
-	Utime     int64  `json:"utime"`
-	Stime     int64  `json:"stime"`
+	Name      string  `json:"name"`
+	Cmd       string  `json:"cmd"`
+	Argvs     string  `json:"argvs"`
+	Euser     string  `json:"euser"`
+	Ruser     string  `json:"ruser"`
+	Nlwp      int     `json:"nlwp"`
+	State     string  `json:"state"`
+	Nice      int     `json:"nice"`
+	Priority  int     `json:"priority"`
+	StartTime int64   `json:"start_time"`
+	TTY       int     `json:"tty"`
+	VMSize    int64   `json:"vm_size"`
+	Resident  int64   `json:"resident"`
+	Share     int64   `json:"share"`
+	Utime     int64   `json:"utime"`
+	Stime     int64   `json:"stime"`
 }
 
 // Package holds one installed package from syscollector.
 type Package struct {
-	Name        string `json:"name"`
-	Version     string `json:"version"`
-	Vendor      string `json:"vendor"`
+	Name         string `json:"name"`
+	Version      string `json:"version"`
+	Vendor       string `json:"vendor"`
 	Architecture string `json:"architecture"`
-	Format      string `json:"format"`
-	InstallTime string `json:"install_time"`
-	Description string `json:"description"`
-	Size        int64  `json:"size"`
-	Priority    string `json:"priority"`
-	Source      string `json:"source"`
+	Format       string `json:"format"`
+	InstallTime  string `json:"install_time"`
+	Description  string `json:"description"`
+	Size         int64  `json:"size"`
+	Priority     string `json:"priority"`
+	Source       string `json:"source"`
 }
 
 // Port holds one network port entry from syscollector.
@@ -241,10 +241,10 @@ type SCACheck struct {
 // AgentStats holds agent-level event statistics.
 // TODO: verify field names against live Wazuh 4.14
 type AgentStats struct {
-	Events           int64   `json:"events"`
-	EventsDropped    int64   `json:"events_dropped"`
-	EventsPerSecond  float64 `json:"events_per_second"`
-	Bytes            int64   `json:"bytes"`
+	Events          int64   `json:"events"`
+	EventsDropped   int64   `json:"events_dropped"`
+	EventsPerSecond float64 `json:"events_per_second"`
+	Bytes           int64   `json:"bytes"`
 }
 
 // LogcollectorStats holds logcollector-level event statistics.

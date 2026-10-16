@@ -10,10 +10,10 @@ import (
 )
 
 type fakeHardwareClient struct {
-	hw     wazuh.Hardware
-	os     wazuh.OSInfo
-	hwErr  error
-	osErr  error
+	hw    wazuh.Hardware
+	os    wazuh.OSInfo
+	hwErr error
+	osErr error
 }
 
 func (f *fakeHardwareClient) GetHardware(_ context.Context, _ string) (wazuh.Hardware, error) {
@@ -35,13 +35,13 @@ func TestHardware_ViewAfterLoad(t *testing.T) {
 			RAMUsage: 75,
 		},
 		os: wazuh.OSInfo{
-			OSName:     "Ubuntu",
-			OSVersion:  "22.04",
-			OSCodename: "jammy",
-			Hostname:   "srv-01",
-			Release:    "5.15.0-generic",
+			OSName:       "Ubuntu",
+			OSVersion:    "22.04",
+			OSCodename:   "jammy",
+			Hostname:     "srv-01",
+			Release:      "5.15.0-generic",
 			Architecture: "x86_64",
-			OSPlatform: "ubuntu",
+			OSPlatform:   "ubuntu",
 		},
 	}
 	m := NewHardware(fc, "001")
