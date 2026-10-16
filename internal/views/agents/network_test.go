@@ -10,12 +10,12 @@ import (
 )
 
 type fakeNetworkClient struct {
-	ifaces    []wazuh.Netiface
-	addrs     []wazuh.Netaddr
-	ports     []wazuh.Port
-	ifaceErr  error
-	addrErr   error
-	portErr   error
+	ifaces   []wazuh.Netiface
+	addrs    []wazuh.Netaddr
+	ports    []wazuh.Port
+	ifaceErr error
+	addrErr  error
+	portErr  error
 }
 
 func (f *fakeNetworkClient) ListNetiface(_ context.Context, _ string) ([]wazuh.Netiface, error) {

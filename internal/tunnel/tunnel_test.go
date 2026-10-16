@@ -95,7 +95,7 @@ func TestOpen_ReadyAndCloseKills(t *testing.T) {
 
 func TestOpen_SSHFailureShowsStderr(t *testing.T) {
 	tn, err := Open(context.Background(), fakeSpec(t, "fail", 1))
-	defer tn.Close()
+	t.Cleanup(tn.Close)
 	if err == nil || !strings.Contains(err.Error(), "Permission denied (publickey)") ||
 		!strings.Contains(err.Error(), "ssh tunnel to prod-manager") {
 		t.Fatalf("err = %v, want ssh stderr with host", err)
@@ -110,7 +110,7 @@ func TestOpen_TimeoutKillsProcess(t *testing.T) {
 	s.ConnectTimeout = 500 * time.Millisecond
 	start := time.Now()
 	tn, err := Open(context.Background(), s)
-	defer tn.Close()
+	t.Cleanup(tn.Close)
 	if err == nil || !strings.Contains(err.Error(), "not ready after 500ms") {
 		t.Fatalf("err = %v, want timeout", err)
 	}
@@ -126,7 +126,7 @@ func TestOpen_ContextCancelAborts(t *testing.T) {
 	defer cancel()
 	start := time.Now()
 	tn, err := Open(ctx, s)
-	defer tn.Close()
+	t.Cleanup(tn.Close)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want context deadline", err)
 	}
@@ -169,7 +169,7 @@ func TestReconnect_AfterUnexpectedExit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tn.Close()
+	t.Cleanup(tn.Close)
 	tn.mu.Lock()
 	old := tn.proc
 	tn.mu.Unlock()
@@ -198,7 +198,7 @@ func TestReconnect_GivesUpThenRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tn.Close()
+	t.Cleanup(tn.Close)
 
 	write("fail")
 	tn.mu.Lock()
