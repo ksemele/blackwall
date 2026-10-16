@@ -11,7 +11,10 @@ You need:
 
 - Go, the version in [`go.mod`](go.mod) (currently 1.26).
 - `make`.
-- [golangci-lint](https://golangci-lint.run/welcome/install/) for `make lint`.
+- [golangci-lint](https://golangci-lint.run/welcome/install/) v2 for `make lint`
+  (CI uses v2.14.0, config in [`.golangci.yml`](.golangci.yml)).
+- Optional: [GoReleaser](https://goreleaser.com/install/) v2, to run
+  `goreleaser check` if you touch `.goreleaser.yaml`.
 - Optional: Docker, to run the Wazuh lab described below.
 
 ```bash
@@ -103,6 +106,16 @@ Agent card tabs live in `internal/views/agents` (one file per tab, such as
 ## Tests
 
 - `make test` and `make lint` must pass.
+- CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every
+  pull request: `make test` (`go test -race ./...`), golangci-lint and
+  `goreleaser check`, with the Go version from `go.mod`. To run the same
+  checks locally:
+
+  ```bash
+  make test
+  make lint
+  goreleaser check
+  ```
 - New behaviour comes with tests. Parsers and API clients are tested against
   JSON fixtures in `testdata/` served by `httptest`; views are tested by sending
   messages to `Update` and checking the model or the rendered `View()`.
