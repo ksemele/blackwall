@@ -33,6 +33,30 @@ func TestParseFlagsRest(t *testing.T) {
 	}
 }
 
+func TestParseFlagsJSON(t *testing.T) {
+	fs := flag.NewFlagSet("blackwall", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	o, err := parseFlags(fs, []string{"--once", "--json"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !o.once || !o.json {
+		t.Errorf("got once=%v, json=%v, want true, true", o.once, o.json)
+	}
+}
+
+func TestParseFlagsJSONWithoutOnce(t *testing.T) {
+	fs := flag.NewFlagSet("blackwall", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	_, err := parseFlags(fs, []string{"--json"})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if want := "--json requires --once"; err.Error() != want {
+		t.Errorf("got %q, want %q", err.Error(), want)
+	}
+}
+
 func vcsInfo(mainVersion string, settings ...string) *debug.BuildInfo {
 	bi := &debug.BuildInfo{Main: debug.Module{Version: mainVersion}}
 	for i := 0; i+1 < len(settings); i += 2 {

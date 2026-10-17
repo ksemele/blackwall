@@ -372,6 +372,7 @@ contexts:
 blackwall                              # interactive TUI
 blackwall --context prod-eu-1          # skip picker, open this context
 blackwall --once                       # print agents and exit (script-friendly)
+blackwall --once --json | jq '.[] | select(.status != "active") | .name'
 ```
 
 ## Keys
