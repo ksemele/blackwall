@@ -9,6 +9,10 @@ type Config struct {
 	Contexts             map[string]Context `yaml:"contexts"`
 	UI                   UI                 `yaml:"ui"`
 	Logging              Logging            `yaml:"logging"`
+
+	// selectContextSet is true when the file sets select_context_on_start,
+	// so ApplyDefaults keeps an explicit false. Filled by Load.
+	selectContextSet bool
 }
 
 type Context struct {
@@ -75,6 +79,9 @@ type UI struct {
 	RefreshInterval time.Duration `yaml:"refresh_interval"`
 	Theme           string        `yaml:"theme"`
 	VimKeys         bool          `yaml:"vim_keys"`
+
+	// vimKeysSet is true when the file sets ui.vim_keys. Filled by Load.
+	vimKeysSet bool
 }
 
 type Logging struct {

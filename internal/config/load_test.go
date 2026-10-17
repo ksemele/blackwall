@@ -262,3 +262,64 @@ func TestIndexer_ValidateLevelRange(t *testing.T) {
 		t.Error("min_level 16 must be rejected (Wazuh levels are 0–15)")
 	}
 }
+
+func loadWithDefaults(t *testing.T, yaml string) Config {
+	t.Helper()
+	cfg, err := Load(writeTempFile(t, "config.yaml", yaml))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	return ApplyDefaults(cfg)
+}
+
+const boolsTestContexts = `
+current: lab
+contexts:
+  lab:
+    wazuh: {server: 127.0.0.1, port: 55000, user: u, password: p}
+`
+
+func TestApplyDefaults_KeepsExplicitFalse(t *testing.T) {
+	cfg := loadWithDefaults(t, boolsTestContexts+`
+select_context_on_start: false
+ui:
+  vim_keys: false
+`)
+	if cfg.SelectContextOnStart {
+		t.Errorf("SelectContextOnStart = true, want explicit false kept")
+	}
+	if cfg.UI.VimKeys {
+		t.Errorf("VimKeys = true, want explicit false kept")
+	}
+}
+
+func TestApplyDefaults_AbsentBoolsDefaultTrue(t *testing.T) {
+	cfg := loadWithDefaults(t, boolsTestContexts)
+	if !cfg.SelectContextOnStart {
+		t.Errorf("SelectContextOnStart = false, want default true")
+	}
+	if !cfg.UI.VimKeys {
+		t.Errorf("VimKeys = false, want default true")
+	}
+}
+
+func TestResolve_OverridesBeatExplicitFalse(t *testing.T) {
+	yes := true
+	file := loadWithDefaults(t, boolsTestContexts+"select_context_on_start: false\n")
+
+	got, err := Resolve(file, Overrides{SelectContextOnStart: &yes}, EnvValues{})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if !got.SelectContextOnStart {
+		t.Errorf("CLI --select-context-on-start lost to file false")
+	}
+
+	got, err = Resolve(file, Overrides{}, EnvValues{SelectContextOnStart: &yes})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if !got.SelectContextOnStart {
+		t.Errorf("BW_SELECT_CONTEXT_ON_START=true lost to file false")
+	}
+}

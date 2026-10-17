@@ -22,17 +22,25 @@ func Load(path string) (Config, error) {
 	if err := yaml.Unmarshal(raw, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config: %w", err)
 	}
+	// Booleans that default to true: a plain bool can't tell "absent" from
+	// "false", so record which ones the file sets.
+	var present struct {
+		SelectContextOnStart *bool `yaml:"select_context_on_start"`
+		UI                   struct {
+			VimKeys *bool `yaml:"vim_keys"`
+		} `yaml:"ui"`
+	}
+	if err := yaml.Unmarshal(raw, &present); err != nil {
+		return Config{}, fmt.Errorf("parse config: %w", err)
+	}
+	cfg.selectContextSet = present.SelectContextOnStart != nil
+	cfg.UI.vimKeysSet = present.UI.VimKeys != nil
 	return cfg, nil
 }
 
-// ApplyDefaults fills missing scalar fields with built-in defaults.
-// `SelectContextOnStart` is a bool: we cannot distinguish "absent" from
-// "explicit false" at the struct level. To make the default sticky, the
-// caller is expected to use Resolve (which checks a presence map produced
-// by load).
-//
-// Implementation note: for MVP we treat zero-value as "absent" for
-// everything except top-level booleans where we accept the limitation.
+// ApplyDefaults fills missing fields with built-in defaults. Booleans that
+// default to true are only filled when Load saw them absent, so an explicit
+// false in the file is kept.
 func ApplyDefaults(cfg Config) Config {
 	if cfg.UI.RefreshInterval == 0 {
 		cfg.UI.RefreshInterval = 3 * time.Second
@@ -40,7 +48,7 @@ func ApplyDefaults(cfg Config) Config {
 	if cfg.UI.Theme == "" {
 		cfg.UI.Theme = "dark"
 	}
-	if !cfg.UI.VimKeys {
+	if !cfg.UI.vimKeysSet {
 		cfg.UI.VimKeys = true
 	}
 	if cfg.Logging.Level == "" {
@@ -50,11 +58,7 @@ func ApplyDefaults(cfg Config) Config {
 		home, _ := os.UserHomeDir()
 		cfg.Logging.File = home + "/.local/state/blackwall/blackwall.log"
 	}
-	// MVP: default SelectContextOnStart to true when zero.
-	// This means "explicit false in YAML" is overridden to true,
-	// but that is fine because main.go reads the raw YAML separately
-	// to detect explicit-false and reapplies it. See Resolve.
-	if !cfg.SelectContextOnStart {
+	if !cfg.selectContextSet {
 		cfg.SelectContextOnStart = true
 	}
 	for name, ctx := range cfg.Contexts {
