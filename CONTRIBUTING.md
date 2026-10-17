@@ -106,10 +106,11 @@ Agent card tabs live in `internal/views/agents` (one file per tab, such as
 ## Tests
 
 - `make test` and `make lint` must pass.
-- CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every
-  pull request: `make test` (`go test -race ./...`), golangci-lint and
-  `goreleaser check`, with the Go version from `go.mod`. To run the same
-  checks locally:
+- CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs
+  `make test` (`go test -race ./...`), golangci-lint and `goreleaser check`,
+  with the Go version from `go.mod`. On a pull request it starts only after
+  the maintainer approves the review, so run the same checks locally before
+  you open one:
 
   ```bash
   make test
