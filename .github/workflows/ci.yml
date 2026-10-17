@@ -1,19 +1,32 @@
 name: ci
 
+# Pull requests are checked only after the repo owner approves them, so
+# drive-by or bot PRs don't burn runner minutes. Pushes to main always run.
 on:
-  pull_request:
+  pull_request_review:
+    types: [submitted]
   push:
-    branches: [main, claude-dev]
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request_review' }}
 
 jobs:
+  gate:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.review.state == 'approved' &&
+       github.event.review.author_association == 'OWNER')
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "checks approved"
+
   test:
+    needs: gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -24,6 +37,7 @@ jobs:
       - run: make test
 
   lint:
+    needs: gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -36,6 +50,7 @@ jobs:
           version: v2.14.0
 
   goreleaser:
+    needs: gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
