@@ -65,6 +65,7 @@ changelog:
   filters:
     exclude:
       - "^Merge "
+      - "^merge: "
   groups:
     - title: Features
       regexp: '^.*?feat(\(.+\))??!?:.+$'
@@ -85,7 +86,7 @@ release:
     Every file below has a GitHub build provenance attestation (Sigstore):
 
     ```bash
-    sha256sum --ignore-missing -c checksums.txt
+    sha256sum --ignore-missing -c checksums.txt        # macOS: shasum -a 256 --ignore-missing -c checksums.txt
     gh attestation verify <file> --repo ksemele/blackwall
     ```
 
@@ -107,7 +108,10 @@ homebrew_casks:
     hooks:
       post:
         # The binary is not signed or notarized; without this Gatekeeper blocks it.
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/blackwall"]
+        # Homebrew's declarative steps (postflight_steps), not Ruby: the old
+        # `install` hook wrote a `postflight` block, which Homebrew deprecated.
+        # Needs GoReleaser >= 2.19 (release.yml pins "~> v2").
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/blackwall"]
           end
