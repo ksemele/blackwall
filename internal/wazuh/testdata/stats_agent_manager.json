@@ -1,0 +1,21 @@
+{
+  "data": {
+    "affected_items": [],
+    "total_affected_items": 0,
+    "total_failed_items": 1,
+    "failed_items": [
+      {
+        "error": {
+          "code": 1310,
+          "message": "Invalid agent ID",
+          "remediation": "This component only exists in real agents"
+        },
+        "id": [
+          "000"
+        ]
+      }
+    ]
+  },
+  "message": "Could not read statistical information for any agent",
+  "error": 1
+}
