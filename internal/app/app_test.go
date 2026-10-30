@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -307,5 +308,38 @@ func TestApp_FailedSwitchUnblocks(t *testing.T) {
 		Apply: func() { t.Error("Apply must not run on error") }})
 	if m.switching != "" || !strings.Contains(m.footerMsg, "ssh down") {
 		t.Errorf("switching=%q footer=%q", m.switching, m.footerMsg)
+	}
+}
+
+func TestApp_ClipsOversizedView(t *testing.T) {
+	var lines []string
+	for i := range 100 {
+		lines = append(lines, fmt.Sprintf("line-%02d %s", i, strings.Repeat("x", 300)))
+	}
+	big := fakeView{name: ":big", rendered: strings.Join(lines, "\n")}
+	m := New(Deps{Views: []views.View{&big}, InitialView: ":big", Version: "v9"})
+	const width, height = 80, 20
+	_, _ = m.Update(tea.WindowSizeMsg{Width: width, Height: height})
+
+	for _, palette := range []bool{false, true} {
+		if palette {
+			_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(":")})
+		}
+		out := m.View()
+		got := strings.Split(out, "\n")
+		if len(got) != height {
+			t.Fatalf("palette=%v: %d lines, want %d:\n%s", palette, len(got), height, out)
+		}
+		for _, l := range got {
+			if w := lipgloss.Width(l); w > width {
+				t.Errorf("palette=%v: line %d wide > %d: %q", palette, w, width, l)
+			}
+		}
+		if !strings.Contains(out, "more lines") {
+			t.Errorf("palette=%v: no cut marker:\n%s", palette, out)
+		}
+		if palette && !strings.Contains(out, "> :") {
+			t.Errorf("palette input clipped away:\n%s", out)
+		}
 	}
 }
