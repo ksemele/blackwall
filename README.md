@@ -384,6 +384,9 @@ blackwall --once --json | jq '.[] | select(.status != "active") | .name'
 | `1`-`9` | jump to view by tab number |
 | `:` | open command palette (`:agents`, `:contexts`, `:ctx <name>`, `:alerts`, `:q`) |
 | `↑↓` / `j k` | move cursor |
+| `PgUp` / `PgDn`, `Ctrl+U` / `Ctrl+D` | agents list: half a page up / down |
+| `g` / `G` | agents list: first / last agent |
+| `/` | agents list: substring filter over ID, name, IP, status, Wazuh version, OS and groups; `Enter` applies, `Esc` clears; while typing, `q`, digits and `p` go into the prompt |
 | `↵` | open (context picker → open context; agents list → details) |
 | `←` / `→` | agent card: previous / next tab (wraps around); `esc` goes back |
 | `l` | agent card: jump to `:alerts` filtered to this agent |
@@ -442,6 +445,10 @@ to `:alerts` filtered to this agent.
 
 While in Top or Packages, press `/` to start typing a substring filter.
 `Enter` applies it, `Esc` clears.
+
+A tab longer than the screen scrolls, with a position line at the bottom:
+`↑↓` or `j` by a line, `Ctrl+D` / `Ctrl+U` by half a page, `g` / `G` to the
+top / bottom. `k` is the Packages hotkey here, so it does not scroll.
 
 Hardware, packages, and network inventory are cached for 30–60 seconds to
 avoid hammering the Wazuh API when switching between tabs. Press `r` to
