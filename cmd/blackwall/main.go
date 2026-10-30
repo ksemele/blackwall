@@ -41,6 +41,7 @@ func main() {
 type options struct {
 	context, config, refresh string
 	once                     bool
+	json                     bool
 	selectContextOnStart     bool
 	noSelectContext          bool
 	version                  bool
@@ -54,11 +55,19 @@ func parseFlags(fs *flag.FlagSet, args []string) (options, error) {
 	fs.StringVar(&o.config, "config", "", "config file path")
 	fs.StringVar(&o.refresh, "refresh", "", "refresh interval (e.g. 3s)")
 	fs.BoolVar(&o.once, "once", false, "print agents table and exit (no TUI)")
+	fs.BoolVar(&o.json, "json", false, "print agents as JSON array and exit (requires --once)")
 	fs.BoolVar(&o.selectContextOnStart, "select-context-on-start", false, "force enable startup picker")
 	fs.BoolVar(&o.noSelectContext, "no-select-context", false, "force disable startup picker")
 	fs.BoolVar(&o.version, "version", false, "print version, commit and build date, then exit")
 	err := fs.Parse(args)
-	return o, err
+	if err != nil {
+		return o, err
+	}
+	// --version prints and exits whatever else is given.
+	if o.json && !o.once && !o.version {
+		return o, errors.New("--json requires --once")
+	}
+	return o, nil
 }
 
 func run() error {
@@ -181,6 +190,9 @@ func run() error {
 	}
 
 	if opts.once {
+		if opts.json {
+			return oneshot.PrintJSON(sigCtx, os.Stdout, client)
+		}
 		return oneshot.Print(sigCtx, os.Stdout, client)
 	}
 
