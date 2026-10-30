@@ -3,8 +3,12 @@ package agents
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/ksemele/blackwall/internal/wazuh"
 )
@@ -147,5 +151,39 @@ func TestSecurity_LoadingBeforeInit(t *testing.T) {
 	out := m.View()
 	if !strings.Contains(out, "loading") {
 		t.Errorf("expected loading state in:\n%s", out)
+	}
+}
+
+func TestSecurity_LongLinesCutAndScrollViaDetail(t *testing.T) {
+	var findings []wazuh.RootcheckFinding
+	for i := range 30 {
+		findings = append(findings, wazuh.RootcheckFinding{
+			Status: "outstanding",
+			Log:    fmt.Sprintf("finding-%02d %s", i, strings.Repeat("x", 200)),
+		})
+	}
+	sec := &fakeSecurityClient{rcFindings: findings}
+	d := NewDetail(&fakeClient{}, nil, "001")
+	d.subs[5] = NewSecurity(sec, "001")
+	const width, height = 100, 15
+	_, _ = d.Update(tea.WindowSizeMsg{Width: width, Height: height})
+	_, _ = d.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	_, _ = d.Update(d.subs[5].Init()())
+
+	out := d.View()
+	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
+	if len(lines) != height {
+		t.Fatalf("detail view has %d lines, want %d:\n%s", len(lines), height, out)
+	}
+	for _, l := range lines {
+		if w := lipgloss.Width(l); w > width {
+			t.Errorf("line wider than %d (%d): %q", width, w, l)
+		}
+	}
+	for range 50 {
+		_, _ = d.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	if out := d.View(); !strings.Contains(out, "finding-29") {
+		t.Errorf("scrolling down never reached the last finding:\n%s", out)
 	}
 }

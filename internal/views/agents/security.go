@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/ksemele/blackwall/internal/ui/footer"
 	"github.com/ksemele/blackwall/internal/ui/styles"
 	"github.com/ksemele/blackwall/internal/wazuh"
 )
@@ -40,10 +41,11 @@ type SecurityModel struct {
 	rcFindings  []wazuh.RootcheckFinding
 	scaPolicies []wazuh.SCAPolicy
 	loaded      bool
+	pg          pager
 }
 
 func NewSecurity(c SecurityClient, agentID string) *SecurityModel {
-	return &SecurityModel{client: c, agentID: agentID}
+	return &SecurityModel{client: c, agentID: agentID, pg: newPager()}
 }
 
 func (m *SecurityModel) Init() tea.Cmd {
@@ -60,6 +62,9 @@ func (m *SecurityModel) Init() tea.Cmd {
 }
 
 func (m *SecurityModel) Update(msg tea.Msg) (subView, tea.Cmd) {
+	if km, ok := msg.(tea.KeyMsg); ok && m.loaded {
+		m.pg.handleKey(km, m.content())
+	}
 	if lm, ok := msg.(SecurityLoadedMsg); ok {
 		m.fimScan = lm.FIMLastScan
 		m.fimEntries = lm.FIMEntries
@@ -71,11 +76,21 @@ func (m *SecurityModel) Update(msg tea.Msg) (subView, tea.Cmd) {
 	return m, nil
 }
 
+// SetSize implements sizedView so DetailModel can propagate window resize.
+func (m *SecurityModel) SetSize(width, height int) { m.pg.SetSize(width, height) }
+
+// Hints implements hintProvider.
+func (m *SecurityModel) Hints() []footer.Hint { return m.pg.hints() }
+
 func (m *SecurityModel) View() string {
 	if !m.loaded {
 		return styles.Dim.Render("loading…") + "\n"
 	}
+	return m.pg.render(m.content())
+}
 
+// content renders all sections; View windows it to the screen.
+func (m *SecurityModel) content() string {
 	var b strings.Builder
 
 	// FIM section

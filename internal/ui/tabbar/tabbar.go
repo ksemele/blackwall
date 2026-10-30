@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/ksemele/blackwall/internal/ui/styles"
 )
@@ -61,17 +62,36 @@ func RenderWithKeys(viewNames []string, keys []string, active int, width int, ve
 	return renderStrip(parts, width, version)
 }
 
-// renderStrip joins tab parts and optionally appends a right-aligned version label.
-func renderStrip(parts []string, width int, version string) string {
-	left := strings.Join(parts, "  │  ")
+// separators are tried widest first until the strip fits the width.
+var separators = []string{"  │  ", " │ ", "│"}
 
-	if version == "" || width <= 0 {
-		return left
+// renderStrip joins tab parts and optionally appends a right-aligned version
+// label. A strip wider than width would wrap and push the screen down, so it
+// tightens the separators, then drops the version, then cuts the tabs.
+func renderStrip(parts []string, width int, version string) string {
+	if width <= 0 {
+		return strings.Join(parts, separators[0])
 	}
 
-	verLabel := styles.TabInactive.Render(version)
-	leftWidth := lipgloss.Width(left)
+	verLabel := ""
+	if version != "" {
+		verLabel = styles.TabInactive.Render(version)
+	}
 	verWidth := lipgloss.Width(verLabel)
-	gap := max(width-leftWidth-verWidth, 1)
-	return left + strings.Repeat(" ", gap) + verLabel
+	for _, withVersion := range []bool{verLabel != "", false} {
+		room := width
+		if withVersion {
+			room -= verWidth + 1
+		}
+		for _, sep := range separators {
+			left := strings.Join(parts, sep)
+			if lw := lipgloss.Width(left); lw <= room {
+				if !withVersion {
+					return left
+				}
+				return left + strings.Repeat(" ", width-lw-verWidth) + verLabel
+			}
+		}
+	}
+	return ansi.Truncate(strings.Join(parts, separators[len(separators)-1]), width, "…")
 }

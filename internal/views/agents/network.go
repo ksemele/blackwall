@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/ksemele/blackwall/internal/ui/footer"
 	"github.com/ksemele/blackwall/internal/ui/styles"
 	"github.com/ksemele/blackwall/internal/wazuh"
 )
@@ -35,10 +36,11 @@ type NetworkModel struct {
 	ports      []wazuh.Port
 	loaded     bool
 	err        string
+	pg         pager
 }
 
 func NewNetwork(c NetworkClient, agentID string) *NetworkModel {
-	return &NetworkModel{client: c, agentID: agentID}
+	return &NetworkModel{client: c, agentID: agentID, pg: newPager()}
 }
 
 func (m *NetworkModel) Init() tea.Cmd {
@@ -61,6 +63,9 @@ func (m *NetworkModel) Init() tea.Cmd {
 }
 
 func (m *NetworkModel) Update(msg tea.Msg) (subView, tea.Cmd) {
+	if km, ok := msg.(tea.KeyMsg); ok && m.loaded && m.err == "" {
+		m.pg.handleKey(km, m.content())
+	}
 	if lm, ok := msg.(NetworkLoadedMsg); ok {
 		if lm.Err != nil {
 			m.err = lm.Err.Error()
@@ -75,6 +80,12 @@ func (m *NetworkModel) Update(msg tea.Msg) (subView, tea.Cmd) {
 	return m, nil
 }
 
+// SetSize implements sizedView so DetailModel can propagate window resize.
+func (m *NetworkModel) SetSize(width, height int) { m.pg.SetSize(width, height) }
+
+// Hints implements hintProvider.
+func (m *NetworkModel) Hints() []footer.Hint { return m.pg.hints() }
+
 func (m *NetworkModel) View() string {
 	if m.err != "" {
 		return styles.Error.Render("⚠ "+m.err) + "\n"
@@ -82,7 +93,11 @@ func (m *NetworkModel) View() string {
 	if !m.loaded {
 		return styles.Dim.Render("loading…") + "\n"
 	}
+	return m.pg.render(m.content())
+}
 
+// content renders all sections; View windows it to the screen.
+func (m *NetworkModel) content() string {
 	var b strings.Builder
 
 	// Interfaces

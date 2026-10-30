@@ -3,6 +3,8 @@ package tabbar
 import (
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestRenderWithKeys_LetterPrefixes(t *testing.T) {
@@ -64,5 +66,24 @@ func TestRender_VersionRightAligned(t *testing.T) {
 	out := Render([]string{":contexts", ":agents"}, 0, 80, "v0.0.1")
 	if !strings.Contains(out, "v0.0.1") {
 		t.Errorf("version label missing: %q", out)
+	}
+}
+
+func TestRender_NeverWiderThanWidth(t *testing.T) {
+	names := []string{"Overview", "Hardware", "Top", "Packages", "Network", "Security", "Sessions"}
+	keys := []string{"O", "H", "T", "K", "N", "S", "E"}
+	for _, width := range []int{200, 110, 100, 80, 60, 30} {
+		for _, ver := range []string{"", "v0.1.1"} {
+			out := RenderWithKeys(names, keys, 5, width, ver)
+			if w := lipgloss.Width(out); w > width {
+				t.Errorf("width %d, version %q: strip is %d wide: %q", width, ver, w, out)
+			}
+			if width >= 100 && !strings.Contains(out, "Sessions") {
+				t.Errorf("width %d: last tab dropped although tighter separators fit: %q", width, out)
+			}
+		}
+	}
+	if out := RenderWithKeys(names, keys, 0, 200, "v0.1.1"); !strings.HasSuffix(out, "v0.1.1") || !strings.Contains(out, "  │  ") {
+		t.Errorf("wide terminal should keep the roomy layout and the version: %q", out)
 	}
 }
