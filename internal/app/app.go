@@ -1,11 +1,13 @@
 package app
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/ksemele/blackwall/internal/ui/footer"
 	"github.com/ksemele/blackwall/internal/ui/statusbar"
@@ -318,15 +320,6 @@ func (m *Model) View() string {
 	}
 	rule := styles.HRule.Render(strings.Repeat("─", ruleWidth))
 
-	body := m.Active().View()
-	if m.paletteOpen {
-		body += "\n\n> " + m.paletteInput
-		if m.paletteErr != "" {
-			body += "\n" + styles.Error.Render(m.paletteErr)
-		}
-	}
-	body = strings.TrimRight(body, "\n")
-
 	foot := footer.Render(m.Active().Hints())
 
 	headerParts := []string{tab, status, rule}
@@ -336,16 +329,47 @@ func (m *Model) View() string {
 	header := strings.Join(headerParts, "\n")
 	bottom := rule + "\n" + foot
 
+	var palette string
+	if m.paletteOpen {
+		palette = "\n\n> " + m.paletteInput
+		if m.paletteErr != "" {
+			palette += "\n" + styles.Error.Render(m.paletteErr)
+		}
+	}
+
+	body := strings.TrimRight(m.Active().View(), "\n")
 	// Pad the body with blank lines so the bottom rule + footer sit on the
 	// last terminal row.  Skip when we have no height yet (pre-resize).
 	if m.height > 0 {
 		target := m.height - lipgloss.Height(header) - lipgloss.Height(bottom)
+		// Views are meant to fit their area; clip the ones that do not, so
+		// they can never wrap or push the header and footer off screen.
+		body = clipBody(body, m.width, target-strings.Count(palette, "\n"))
+		body += palette
 		if pad := target - lipgloss.Height(body); pad > 0 {
 			body += strings.Repeat("\n", pad)
 		}
+	} else {
+		body += palette
 	}
 
 	return header + "\n" + body + "\n" + bottom
+}
+
+// clipBody cuts body to width cells per line and height lines; the last line
+// kept then says how many were cut.
+func clipBody(body string, width, height int) string {
+	lines := strings.Split(body, "\n")
+	if height > 0 && len(lines) > height {
+		hidden := len(lines) - height + 1
+		lines = append(lines[:height-1], styles.Dim.Render(fmt.Sprintf("… %d more lines", hidden)))
+	}
+	if width > 0 {
+		for i, l := range lines {
+			lines[i] = ansi.Truncate(l, width, "…")
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func singleDigit(s string) int {

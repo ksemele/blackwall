@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/ksemele/blackwall/internal/ui/footer"
 	"github.com/ksemele/blackwall/internal/wazuh"
 )
 
@@ -109,21 +110,27 @@ func manyPorts(n int) []wazuh.Port {
 }
 
 func TestNetwork_ScrollsWithinWindow(t *testing.T) {
-	m := NewNetwork(&fakeNetworkClient{ports: manyPorts(40)}, "001")
-	_, _ = m.Update(m.Init()())
-	const width, height = 80, 12
-	m.SetSize(width, height)
+	d := NewDetail(&fakeClient{}, nil, "001")
+	d.subs[4] = NewNetwork(&fakeNetworkClient{ports: manyPorts(40)}, "001")
+	// height is the detail body; the agent name and the tab bar take two.
+	const width, height = 120, 14
+	_, _ = d.Update(tea.WindowSizeMsg{Width: width, Height: height})
+	_, _ = d.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	_, _ = d.Update(d.subs[4].Init()())
 
-	lines := strings.Split(strings.TrimSuffix(m.View(), "\n"), "\n")
+	lines := strings.Split(strings.TrimSuffix(d.View(), "\n"), "\n")
 	if len(lines) != height {
-		t.Fatalf("view has %d lines, want %d:\n%s", len(lines), height, m.View())
+		t.Fatalf("view has %d lines, want %d:\n%s", len(lines), height, d.View())
 	}
-	if !strings.Contains(lines[0], "Interfaces") || !strings.Contains(lines[height-1], "of ") {
-		t.Errorf("want first section on top and a position line at the bottom:\n%s", m.View())
+	if !strings.Contains(lines[2], "Interfaces") || !strings.Contains(lines[height-1], "of ") {
+		t.Errorf("want first section on top and a position line at the bottom:\n%s", d.View())
+	}
+	if !hasHint(d.Hints(), "g/G") {
+		t.Errorf("scroll hints missing on an overflowing tab: %v", d.Hints())
 	}
 
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	out := m.View()
+	_, _ = d.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	out := d.View()
 	if n := strings.Count(out, "\n"); n != height {
 		t.Errorf("after G: %d lines, want %d", n, height)
 	}
@@ -134,5 +141,22 @@ func TestNetwork_ScrollsWithinWindow(t *testing.T) {
 		if w := lipgloss.Width(l); w > width {
 			t.Errorf("line wider than %d (%d): %q", width, w, l)
 		}
+	}
+}
+
+func hasHint(hs []footer.Hint, key string) bool {
+	for _, h := range hs {
+		if h.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+func TestDetail_ShortTabHasNoScrollHints(t *testing.T) {
+	d := NewDetail(&fakeClient{}, nil, "001")
+	_, _ = d.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	if hasHint(d.Hints(), "g/G") {
+		t.Errorf("Overview fits but shows scroll hints: %v", d.Hints())
 	}
 }

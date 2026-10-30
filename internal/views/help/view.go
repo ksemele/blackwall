@@ -9,12 +9,15 @@ import (
 
 	"github.com/ksemele/blackwall/internal/app"
 	"github.com/ksemele/blackwall/internal/ui/footer"
+	"github.com/ksemele/blackwall/internal/ui/scroll"
 	"github.com/ksemele/blackwall/internal/ui/styles"
 )
 
 // View is the help screen.  It is pushed onto the view stack when the user
 // presses `?` and popped when they press `q` or `ESC`.
-type View struct{}
+type View struct {
+	pg scroll.Pager // the reference is taller than small terminals
+}
 
 // New returns a new help View.
 func New() *View { return &View{} }
@@ -22,27 +25,37 @@ func New() *View { return &View{} }
 func (v *View) Name() string { return ":help" }
 
 func (v *View) Hints() []footer.Hint {
-	return []footer.Hint{
+	hints := []footer.Hint{
 		{Key: "ESC", Desc: "back"},
 		{Key: "q", Desc: "quit"},
 	}
+	if v.pg.Overflows(v.text()) {
+		hints = append(hints, footer.Hint{Key: "j/k", Desc: "scroll"}, footer.Hint{Key: "g/G", Desc: "top/bottom"})
+	}
+	return hints
 }
 
 func (v *View) Init() tea.Cmd { return nil }
 
 func (v *View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if km, ok := msg.(tea.KeyMsg); ok {
-		switch km.String() {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		v.pg.SetSize(msg.Width, msg.Height)
+	case tea.KeyMsg:
+		switch msg.String() {
 		case "esc":
 			return v, func() tea.Msg { return app.BackMsg{} }
 		case "q":
 			return v, tea.Quit
 		}
+		v.pg.HandleKey(msg, v.text())
 	}
 	return v, nil
 }
 
-func (v *View) View() string {
+func (v *View) View() string { return v.pg.Render(v.text()) }
+
+func (v *View) text() string {
 	var b strings.Builder
 
 	b.WriteString(styles.HelpHeading.Render("Help") + "\n\n")
@@ -59,14 +72,16 @@ func (v *View) View() string {
 
 	b.WriteString(styles.HelpHeading.Render("Agents") + "\n")
 	b.WriteString(row("↑ / ↓  (or k/j)", "Navigate"))
+	b.WriteString(row("PgUp / PgDn, g / G", "Half page, top / bottom"))
 	b.WriteString(row("↵", "Details"))
 	b.WriteString(row("p", "Pause / resume refresh"))
 	b.WriteString(row("ctrl+r", "Force refresh"))
-	b.WriteString(row("/", "Filter  (not yet implemented)"))
+	b.WriteString(row("/", "Filter  (↵ apply, ESC clear)"))
 	b.WriteString("\n")
 
 	b.WriteString(styles.HelpHeading.Render("Agent detail") + "\n")
 	b.WriteString(row("← / →", "Previous / next tab (wraps around)"))
+	b.WriteString(row("↑ / ↓  (or j), g / G", "Scroll a long tab"))
 	b.WriteString(row("ESC", "Back to list"))
 	b.WriteString(row("r", "Refresh"))
 	b.WriteString("\n")

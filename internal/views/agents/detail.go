@@ -9,6 +9,7 @@ import (
 
 	"github.com/ksemele/blackwall/internal/app"
 	"github.com/ksemele/blackwall/internal/ui/footer"
+	"github.com/ksemele/blackwall/internal/ui/scroll"
 	"github.com/ksemele/blackwall/internal/ui/styles"
 	"github.com/ksemele/blackwall/internal/ui/tabbar"
 	"github.com/ksemele/blackwall/internal/wazuh"
@@ -61,12 +62,15 @@ type DetailModel struct {
 	width     int
 	height    int
 	subs      map[int]subView
+	// pagers scroll the tabs that do not size themselves (see paged).
+	pagers []scroll.Pager
 }
 
 func NewDetail(c Client, idx AlertSearcher, id string) *DetailModel {
 	return &DetailModel{
 		client:  c,
 		agentID: id,
+		pagers:  make([]scroll.Pager, len(detailTabs)),
 		subs: map[int]subView{
 			1: NewHardware(c, id),
 			2: NewProcesses(c, id),
@@ -98,6 +102,14 @@ func (m *DetailModel) Hints() []footer.Hint {
 			return append(base, hp.Hints()...)
 		}
 	}
+	if m.paged() && m.pagers[m.activeTab].Overflows(m.renderActiveTab()) {
+		// k is the Packages tab hotkey here, so it does not scroll.
+		base = append(base,
+			footer.Hint{Key: "↑↓/j", Desc: "scroll"},
+			footer.Hint{Key: "ctrl+d/u", Desc: "half page"},
+			footer.Hint{Key: "g/G", Desc: "top/bottom"},
+		)
+	}
 	return base
 }
 
@@ -127,6 +139,9 @@ func (m *DetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				sv.SetSize(ws.Width, subHeight)
 				m.subs[i] = sub
 			}
+		}
+		for i := range m.pagers {
+			m.pagers[i].SetSize(ws.Width, subHeight)
 		}
 		// Don't return early — fall through so any other handler gets the message.
 	}
@@ -167,6 +182,9 @@ func (m *DetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, func() tea.Msg { return app.ShowAgentAlertsMsg{AgentID: id, AgentName: name} }
 		}
+		if m.paged() && m.pagers[m.activeTab].HandleKey(msg, m.renderActiveTab()) {
+			return m, nil
+		}
 	}
 
 	if sub, ok := m.subs[m.activeTab]; ok {
@@ -176,6 +194,20 @@ func (m *DetailModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// paged reports whether the active tab is scrolled by DetailModel: every tab
+// whose sub-view does not window itself to the height (sizedView).
+func (m *DetailModel) paged() bool {
+	if m.activeTab < 0 || m.activeTab >= len(m.pagers) {
+		return false
+	}
+	sub, ok := m.subs[m.activeTab]
+	if !ok {
+		return true
+	}
+	_, sized := sub.(sizedView)
+	return !sized
 }
 
 // switchTab activates tab idx and starts its sub-view loading, if any.
@@ -243,5 +275,9 @@ func (m *DetailModel) View() string {
 		return header + tabs + "\n" + fmt.Sprintf("⚠ %s\n", m.err)
 	}
 
-	return header + tabs + "\n" + m.renderActiveTab()
+	body := m.renderActiveTab()
+	if m.paged() {
+		body = m.pagers[m.activeTab].Render(body)
+	}
+	return header + tabs + "\n" + body
 }

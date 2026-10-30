@@ -44,8 +44,4 @@ var (
 	_ hintProvider = (*ProcessesModel)(nil)
 	_ sizedView    = (*SessionsModel)(nil)
 	_ hintProvider = (*SessionsModel)(nil)
-	_ sizedView    = (*NetworkModel)(nil)
-	_ hintProvider = (*NetworkModel)(nil)
-	_ sizedView    = (*SecurityModel)(nil)
-	_ hintProvider = (*SecurityModel)(nil)
 )
