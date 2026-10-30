@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -162,11 +163,12 @@ func TestListView_DockerAgentsTagged(t *testing.T) {
 	_, _ = v.Update(tea.WindowSizeMsg{Width: width})
 
 	lines := strings.Split(strings.TrimRight(v.View(), "\n"), "\n")
-	// lines[0] is the header; rows follow in agent order, row 1 is selected.
-	if strings.Contains(lines[1], dockerTag) {
-		t.Errorf("non-container agent tagged: %q", lines[1])
+	// lines[0] is the summary, lines[1] the header; rows follow in agent
+	// order, row 2 is selected.
+	if strings.Contains(lines[2], dockerTag) {
+		t.Errorf("non-container agent tagged: %q", lines[2])
 	}
-	for _, line := range lines[2:] {
+	for _, line := range lines[3:] {
 		if !strings.Contains(line, dockerTag) {
 			t.Errorf("container agent not tagged: %q", line)
 		}
@@ -175,5 +177,121 @@ func TestListView_DockerAgentsTagged(t *testing.T) {
 		if w := lipgloss.Width(line); w != width {
 			t.Errorf("row width = %d, want %d (line: %q)", w, width, line)
 		}
+	}
+}
+
+func manyAgents(n int) []wazuh.Agent {
+	out := make([]wazuh.Agent, n)
+	for i := range out {
+		out[i] = wazuh.Agent{ID: fmt.Sprintf("%03d", i), Name: fmt.Sprintf("host-%02d", i), Status: "active"}
+	}
+	return out
+}
+
+func key(s string) tea.KeyMsg {
+	switch s {
+	case "enter":
+		return tea.KeyMsg{Type: tea.KeyEnter}
+	case "esc":
+		return tea.KeyMsg{Type: tea.KeyEsc}
+	case "down":
+		return tea.KeyMsg{Type: tea.KeyDown}
+	case "up":
+		return tea.KeyMsg{Type: tea.KeyUp}
+	case "backspace":
+		return tea.KeyMsg{Type: tea.KeyBackspace}
+	}
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+}
+
+func TestListView_FitsWindowHeightAndFollowsCursor(t *testing.T) {
+	v := New(&fakeClient{}, 3*time.Second)
+	v.SetAgents(manyAgents(50))
+	const height = 10
+	_, _ = v.Update(tea.WindowSizeMsg{Width: 120, Height: height})
+
+	lines := strings.Split(v.View(), "\n")
+	if len(lines) != height {
+		t.Fatalf("view has %d lines, want %d:\n%s", len(lines), height, v.View())
+	}
+	if !strings.Contains(lines[2], "host-00") {
+		t.Errorf("first row = %q, want host-00", lines[2])
+	}
+
+	for range 20 {
+		_, _ = v.Update(key("down"))
+	}
+	lines = strings.Split(v.View(), "\n")
+	if len(lines) != height {
+		t.Fatalf("after scroll: %d lines, want %d", len(lines), height)
+	}
+	if !strings.Contains(lines[height-1], "host-20") {
+		t.Errorf("last row = %q, want selected host-20", lines[height-1])
+	}
+	if strings.Contains(v.View(), "host-00") {
+		t.Error("host-00 still shown after scrolling past it")
+	}
+}
+
+func TestListView_Filter(t *testing.T) {
+	v := NewView(&fakeClient{}, 3*time.Second)
+	v.SetAgents([]wazuh.Agent{
+		{ID: "000", Name: "master", Status: "active"},
+		{ID: "001", Name: "web-01", Status: "disconnected", IP: "10.0.0.5"},
+		{ID: "002", Name: "web-02", Status: "active"},
+	})
+	_, _ = v.Update(tea.WindowSizeMsg{Width: 120, Height: 20})
+
+	_, _ = v.Update(key("/"))
+	if !v.CapturesKeys() {
+		t.Fatal("filter prompt open but keys not captured")
+	}
+	for _, r := range "web" {
+		_, _ = v.Update(key(string(r)))
+	}
+	out := v.View()
+	if strings.Contains(out, "master") || !strings.Contains(out, "web-01") || !strings.Contains(out, "web-02") {
+		t.Errorf("filter web:\n%s", out)
+	}
+	_, _ = v.Update(key("enter"))
+	if v.CapturesKeys() {
+		t.Error("keys still captured after Enter")
+	}
+
+	// Enter opens the filtered row under the cursor, not the unfiltered one.
+	_, _ = v.Update(key("down"))
+	_, cmd := v.Update(key("enter"))
+	if cmd == nil {
+		t.Fatal("no cmd on Enter")
+	}
+	if sd, ok := cmd().(app.SwitchToDetailMsg); !ok || sd.AgentID != "002" {
+		t.Errorf("Enter on filtered row 2 = %#v, want agent 002", sd)
+	}
+	_, _ = v.Update(app.BackMsg{})
+
+	// IP matches too; Esc clears.
+	_, _ = v.Update(key("/"))
+	for _, r := range "10.0.0" {
+		_, _ = v.Update(key(string(r)))
+	}
+	if out := v.View(); strings.Contains(out, "web-02") || !strings.Contains(out, "web-01") {
+		t.Errorf("filter by IP:\n%s", out)
+	}
+	_, _ = v.Update(key("esc"))
+	if out := v.View(); !strings.Contains(out, "master") || strings.Contains(out, "/10") {
+		t.Errorf("Esc did not clear the filter:\n%s", out)
+	}
+}
+
+func TestListView_RefreshKeepsSelection(t *testing.T) {
+	fc := &fakeClient{}
+	v := New(fc, 3*time.Second)
+	v.SetAgents(manyAgents(5))
+	_, _ = v.Update(key("down"))
+	_, _ = v.Update(key("down")) // host-02
+	_, _ = v.Update(AgentsLoadedMsg{Agents: manyAgents(5)[1:]})
+	_, cmd := v.Update(key("enter"))
+	if sd, _ := cmd().(app.SwitchToDetailMsg); sd.AgentID != "002" {
+		t.Errorf("selection after refresh = %q, want 002", sd.AgentID)
 	}
 }

@@ -60,6 +60,8 @@ func (v *View) ReplaceClient(c Client) {
 	v.list.agents = nil
 	v.list.cursor = 0
 	v.list.lastErr = ""
+	v.list.offset = 0
+	v.list.filter, v.list.filtering = "", false
 	v.detail = nil
 }
 
@@ -126,10 +128,11 @@ func (v *View) View() string {
 func (v *View) SetAgents(a []wazuh.Agent) { v.list.SetAgents(a) }
 
 // CapturesKeys implements views.KeyCapturer: true while the active detail tab
-// is in a modal state (e.g. typing into its filter prompt).
+// is in a modal state (e.g. typing into its filter prompt), or while the list
+// filter prompt is open.
 func (v *View) CapturesKeys() bool {
 	if v.detail == nil {
-		return false
+		return v.list.CapturesKeys()
 	}
 	sub, ok := v.detail.subs[v.detail.activeTab]
 	if !ok {
