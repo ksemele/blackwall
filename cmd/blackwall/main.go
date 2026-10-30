@@ -63,7 +63,8 @@ func parseFlags(fs *flag.FlagSet, args []string) (options, error) {
 	if err != nil {
 		return o, err
 	}
-	if o.json && !o.once {
+	// --version prints and exits whatever else is given.
+	if o.json && !o.once && !o.version {
 		return o, errors.New("--json requires --once")
 	}
 	return o, nil

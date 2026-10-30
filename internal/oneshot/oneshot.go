@@ -18,14 +18,14 @@ type OS struct {
 }
 
 type Agent struct {
-	ID            string    `json:"id"`
-	Name          string    `json:"name"`
-	IP            string    `json:"ip"`
-	Status        string    `json:"status"`
-	Version       string    `json:"version"`
-	OS            OS        `json:"os"`
-	LastKeepAlive time.Time `json:"last_keepalive"`
-	Container     bool      `json:"container"`
+	ID            string     `json:"id"`
+	Name          string     `json:"name"`
+	IP            string     `json:"ip"`
+	Status        string     `json:"status"`
+	Version       string     `json:"version"`
+	OS            OS         `json:"os"`
+	LastKeepAlive *time.Time `json:"last_keepalive"` // null when never seen
+	Container     bool       `json:"container"`
 }
 
 type Lister interface {
@@ -57,6 +57,11 @@ func PrintJSON(ctx context.Context, out io.Writer, c Lister) error {
 	}
 	items := make([]Agent, 0, len(agents))
 	for _, a := range agents {
+		var seen *time.Time
+		if wazuh.KnownTime(a.LastKeepAlive) {
+			t := a.LastKeepAlive.UTC().Truncate(time.Second)
+			seen = &t
+		}
 		items = append(items, Agent{
 			ID:            a.ID,
 			Name:          a.Name,
@@ -64,7 +69,7 @@ func PrintJSON(ctx context.Context, out io.Writer, c Lister) error {
 			Status:        a.Status,
 			Version:       a.Version,
 			OS:            OS{Name: a.OS.Name, Version: a.OS.Version},
-			LastKeepAlive: a.LastKeepAlive.UTC().Truncate(time.Second),
+			LastKeepAlive: seen,
 			Container:     a.InContainer(),
 		})
 	}

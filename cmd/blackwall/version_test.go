@@ -57,6 +57,18 @@ func TestParseFlagsJSONWithoutOnce(t *testing.T) {
 	}
 }
 
+func TestParseFlagsVersionWithJSON(t *testing.T) {
+	fs := flag.NewFlagSet("blackwall", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	o, err := parseFlags(fs, []string{"--version", "--json"})
+	if err != nil {
+		t.Fatalf("--version --json: %v", err)
+	}
+	if !o.version {
+		t.Error("version not set")
+	}
+}
+
 func vcsInfo(mainVersion string, settings ...string) *debug.BuildInfo {
 	bi := &debug.BuildInfo{Main: debug.Module{Version: mainVersion}}
 	for i := 0; i+1 < len(settings); i += 2 {

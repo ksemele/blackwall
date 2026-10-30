@@ -96,7 +96,7 @@ func TestPrintJSON_RendersArray(t *testing.T) {
 	}
 	// Verify last_keepalive was converted to UTC
 	wantTime0 := time.Date(2026, 10, 12, 14, 58, 0, 0, time.UTC)
-	if !a0.LastKeepAlive.Equal(wantTime0) {
+	if a0.LastKeepAlive == nil || !a0.LastKeepAlive.Equal(wantTime0) {
 		t.Errorf("agent 0 last_keepalive = %v, want %v", a0.LastKeepAlive, wantTime0)
 	}
 
@@ -118,6 +118,30 @@ func TestPrintJSON_RendersArray(t *testing.T) {
 	}
 	if !strings.Contains(out, `"container": false`) {
 		t.Errorf("raw JSON missing \"container\": false, got:\n%s", out)
+	}
+}
+
+func TestPrintJSON_UnknownKeepAliveIsNull(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		t    time.Time
+	}{
+		{"zero (never_connected)", time.Time{}},
+		{"year 0001", time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)},
+		{"sentinel year 9999", time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fc := &fakeClient{agents: []wazuh.Agent{
+				{ID: "002", Name: "ghost", Status: "never_connected", LastKeepAlive: tc.t},
+			}}
+			var buf bytes.Buffer
+			if err := PrintJSON(context.Background(), &buf, fc); err != nil {
+				t.Fatalf("PrintJSON: %v", err)
+			}
+			if !strings.Contains(buf.String(), `"last_keepalive": null`) {
+				t.Errorf("want last_keepalive null, got:\n%s", buf.String())
+			}
+		})
 	}
 }
 
