@@ -1,0 +1,69 @@
+{
+  "data": {
+    "affected_items": [
+      {
+        "global": {
+          "start": "2026-10-29T08:57:53Z",
+          "end": "2026-10-30T10:26:12Z",
+          "files": [
+            {
+              "location": "/var/log/syslog",
+              "events": 1233,
+              "bytes": 296478,
+              "targets": [
+                {
+                  "name": "agent",
+                  "drops": 0
+                }
+              ]
+            },
+            {
+              "location": "blackwall-sessions",
+              "events": 334,
+              "bytes": 1728412,
+              "targets": [
+                {
+                  "name": "agent",
+                  "drops": 0
+                }
+              ]
+            }
+          ]
+        },
+        "interval": {
+          "start": "2026-10-30T10:25:12Z",
+          "end": "2026-10-30T10:26:12Z",
+          "files": [
+            {
+              "location": "/var/log/syslog",
+              "events": 4,
+              "bytes": 1073,
+              "targets": [
+                {
+                  "name": "agent",
+                  "drops": 0
+                }
+              ]
+            },
+            {
+              "location": "blackwall-sessions",
+              "events": 1,
+              "bytes": 5175,
+              "targets": [
+                {
+                  "name": "agent",
+                  "drops": 0
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "total_affected_items": 1,
+    "total_failed_items": 0,
+    "failed_items": []
+  },
+  "message": "Statistical information for each agent was successfully read",
+  "error": 0
+}

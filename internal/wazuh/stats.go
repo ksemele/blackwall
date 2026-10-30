@@ -3,6 +3,7 @@ package wazuh
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -21,7 +22,7 @@ func (c *Client) GetAgentStats(ctx context.Context, id string) (AgentStats, erro
 		return AgentStats{}, fmt.Errorf("get agent stats decode: %w", err)
 	}
 	if len(ar.Data.AffectedItems) == 0 {
-		return AgentStats{}, fmt.Errorf("get agent stats: no data")
+		return AgentStats{}, fmt.Errorf("get agent stats: %w", noItemsErr(ar.Data.FailedItems))
 	}
 	return ar.Data.AffectedItems[0], nil
 }
@@ -41,7 +42,16 @@ func (c *Client) GetLogcollectorStats(ctx context.Context, id string) (Logcollec
 		return LogcollectorStats{}, fmt.Errorf("get logcollector stats decode: %w", err)
 	}
 	if len(ar.Data.AffectedItems) == 0 {
-		return LogcollectorStats{}, fmt.Errorf("get logcollector stats: no data")
+		return LogcollectorStats{}, fmt.Errorf("get logcollector stats: %w", noItemsErr(ar.Data.FailedItems))
 	}
 	return ar.Data.AffectedItems[0], nil
+}
+
+// noItemsErr explains an empty affected_items with the API's own message.
+func noItemsErr(failed []failedItem) error {
+	if len(failed) == 0 || failed[0].Error.Message == "" {
+		return errors.New("no data")
+	}
+	e := failed[0].Error
+	return fmt.Errorf("%s (code %d)", e.Message, e.Code)
 }

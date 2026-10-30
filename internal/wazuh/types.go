@@ -238,22 +238,48 @@ type SCACheck struct {
 	References  string `json:"references"`
 }
 
-// AgentStats holds agent-level event statistics.
-// TODO: verify field names against live Wazuh 4.14
+// AgentStats is the agent's connection and buffer state
+// (GET /agents/{id}/stats/agent). Only real agents have it: the manager (000)
+// and agents that never connected get an API error instead.
 type AgentStats struct {
-	Events          int64   `json:"events"`
-	EventsDropped   int64   `json:"events_dropped"`
-	EventsPerSecond float64 `json:"events_per_second"`
-	Bytes           int64   `json:"bytes"`
+	Status        string    `json:"status"` // "connected", "disconnected"
+	LastKeepAlive time.Time `json:"last_keepalive"`
+	LastAck       time.Time `json:"last_ack"`
+	MsgCount      int64     `json:"msg_count"`  // events generated
+	MsgSent       int64     `json:"msg_sent"`   // messages sent to the manager
+	MsgBuffer     int64     `json:"msg_buffer"` // events waiting in the buffer
+	BufferEnabled bool      `json:"buffer_enabled"`
 }
 
-// LogcollectorStats holds logcollector-level event statistics.
-// TODO: verify field names against live Wazuh 4.14
+// LogcollectorStats is per-file logcollector statistics
+// (GET /agents/{id}/stats/logcollector), the manager included.
 type LogcollectorStats struct {
-	Events          int64   `json:"events"`
-	EventsDropped   int64   `json:"events_dropped"`
-	EventsPerSecond float64 `json:"events_per_second"`
-	Bytes           int64   `json:"bytes"`
+	Global   LogcollectorPeriod `json:"global"`   // since the counters started
+	Interval LogcollectorPeriod `json:"interval"` // the last interval (60 s in the lab)
+}
+
+// LogcollectorPeriod holds the counters of every monitored location over one
+// period.
+type LogcollectorPeriod struct {
+	Start time.Time          `json:"start"`
+	End   time.Time          `json:"end"`
+	Files []LogcollectorFile `json:"files"`
+}
+
+// LogcollectorFile is one monitored location: a file path, or a source such
+// as "journald" or a command alias.
+type LogcollectorFile struct {
+	Location string               `json:"location"`
+	Events   int64                `json:"events"`
+	Bytes    int64                `json:"bytes"`
+	Targets  []LogcollectorTarget `json:"targets"`
+}
+
+// LogcollectorTarget is where the events of a location go; Drops counts
+// events lost on the way.
+type LogcollectorTarget struct {
+	Name  string `json:"name"`
+	Drops int64  `json:"drops"`
 }
 
 // --- private response wrappers ---
@@ -339,11 +365,23 @@ type scaChecksResponse struct {
 type agentStatsResponse struct {
 	Data struct {
 		AffectedItems []AgentStats `json:"affected_items"`
+		FailedItems   []failedItem `json:"failed_items"`
 	} `json:"data"`
 }
 
 type logcollectorStatsResponse struct {
 	Data struct {
 		AffectedItems []LogcollectorStats `json:"affected_items"`
+		FailedItems   []failedItem        `json:"failed_items"`
 	} `json:"data"`
+}
+
+// failedItem is an entry of data.failed_items: the API answers HTTP 200 and
+// reports per-agent errors here (e.g. 1310 for the manager on
+// /stats/agent, 1015 for an agent that never connected).
+type failedItem struct {
+	Error struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
 }
