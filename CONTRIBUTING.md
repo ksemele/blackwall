@@ -12,7 +12,8 @@ You need:
 - Go, the version in [`go.mod`](go.mod) (currently 1.26).
 - `make`.
 - [golangci-lint](https://golangci-lint.run/welcome/install/) v2 for `make lint`
-  (CI uses v2.14.0, config in [`.golangci.yml`](.golangci.yml)).
+  (v2.14.0 is what the maintainer's pre-merge checks run, config in
+  [`.golangci.yml`](.golangci.yml)).
 - Optional: [GoReleaser](https://goreleaser.com/install/) v2, to run
   `goreleaser check` if you touch `.goreleaser.yaml`.
 - Optional: Docker, to run the Wazuh lab described below.
@@ -106,11 +107,9 @@ Agent card tabs live in `internal/views/agents` (one file per tab, such as
 ## Tests
 
 - `make test` and `make lint` must pass.
-- CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs
-  `make test` (`go test -race ./...`), golangci-lint and `goreleaser check`,
-  with the Go version from `go.mod`. On a pull request it starts only after
-  the maintainer approves the review, so run the same checks locally before
-  you open one:
+- Before opening a PR, run locally the checks the maintainer runs on their
+  own infrastructure before merging: `make test` (`go test -race ./...`,
+  with the Go version from `go.mod`), golangci-lint and `goreleaser check`:
 
   ```bash
   make test
