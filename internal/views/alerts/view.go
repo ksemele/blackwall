@@ -285,8 +285,7 @@ func (v *View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				v.card = nil
 				return v, nil
 			}
-			v.card.handleKey(msg)
-			return v, nil
+			return v, v.card.handleKey(msg)
 		}
 		if v.filtering {
 			v.filterKey(msg)

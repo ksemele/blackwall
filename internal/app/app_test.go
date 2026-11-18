@@ -343,3 +343,35 @@ func TestApp_ClipsOversizedView(t *testing.T) {
 		}
 	}
 }
+
+func TestApp_StatusMsgShownThenCleared(t *testing.T) {
+	v := fakeView{name: ":a", rendered: "AAA"}
+	m := New(Deps{Views: []views.View{&v}, InitialView: ":a"})
+
+	_, cmd := m.Update(StatusMsg{Text: "copied 12 bytes to clipboard"})
+	if cmd == nil {
+		t.Fatal("StatusMsg must schedule a timeout command")
+	}
+	if !strings.Contains(m.View(), "copied 12 bytes to clipboard") {
+		t.Errorf("status message not rendered in:\n%s", m.View())
+	}
+
+	// Simulate the tea.Tick follow-up firing.
+	m.Update(statusClearMsg{seq: m.statusSeq})
+	if strings.Contains(m.View(), "copied 12 bytes") {
+		t.Errorf("status message was not cleared on timeout")
+	}
+
+	// A timeout of a superseded message must not clear the current one.
+	m.Update(StatusMsg{Text: "newer"})
+	m.Update(statusClearMsg{seq: m.statusSeq - 1})
+	if !strings.Contains(m.View(), "newer") {
+		t.Errorf("stale timeout cleared the newer status message")
+	}
+
+	// Control characters in a status message cannot reach the terminal.
+	m.Update(StatusMsg{Text: "bad\x1b[2Jbody"})
+	if strings.Contains(m.View(), "\x1b[2J") {
+		t.Errorf("escape sequence leaked from status message")
+	}
+}
