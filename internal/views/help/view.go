@@ -77,6 +77,7 @@ func (v *View) text() string {
 	b.WriteString(row("p", "Pause / resume refresh"))
 	b.WriteString(row("ctrl+r", "Force refresh"))
 	b.WriteString(row("/", "Filter  (↵ apply, ESC clear)"))
+	b.WriteString(row("s", "Sort: cycle API → name → status → last seen"))
 	b.WriteString("\n")
 
 	b.WriteString(styles.HelpHeading.Render("Agent detail") + "\n")
