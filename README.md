@@ -490,6 +490,7 @@ blackwall --once --json | jq '.[] | select(.status != "active") | .name'
 | `PgUp` / `PgDn`, `Ctrl+U` / `Ctrl+D` | agents list: half a page up / down |
 | `g` / `G` | agents list: first / last agent |
 | `/` | agents list: substring filter over ID, name, IP, status, Wazuh version, OS and groups; `Enter` applies, `Esc` clears; while typing, `q`, digits and `p` go into the prompt |
+| `s` | agents list: cycle sort — API order → name → status (broken first) → last seen (oldest first); `▲` marks the sorted column |
 | `↵` | open (context picker → open context; agents list → details) |
 | `←` / `→` | agent card: previous / next tab (wraps around); `esc` goes back |
 | `l` | agent card: jump to `:alerts` filtered to this agent |
