@@ -394,7 +394,7 @@ blackwall --once --json | jq '.[] | select(.status != "active") | .name'
 | `p` | pause / resume auto-refresh |
 | `Ctrl+R` | force refresh now (also retries a down ssh tunnel) |
 | `r` | agent card: refresh (also retries a down ssh tunnel) |
-| `?` | toggle help (planned) |
+| `?` | open the help screen; `esc` closes it, `j k` and `g` / `G` scroll it |
 
 ## Alerts
 
