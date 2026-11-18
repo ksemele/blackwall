@@ -391,6 +391,7 @@ blackwall --once --json | jq '.[] | select(.status != "active") | .name'
 | `←` / `→` | agent card: previous / next tab (wraps around); `esc` goes back |
 | `l` | agent card: jump to `:alerts` filtered to this agent |
 | `e` | agent card: open the Sessions tab |
+| `y` | alert card: copy the full log to the clipboard (OSC 52, see [Alerts](#alerts)) |
 | `p` | pause / resume auto-refresh |
 | `Ctrl+R` | force refresh now (also retries a down ssh tunnel) |
 | `r` | agent card: refresh (also retries a down ssh tunnel) |
@@ -407,12 +408,22 @@ Defaults: `min_level: 5`, `exclude_groups: [sca, blackwall_sessions]`.
 |---|---|
 | `↑↓` / `j k` | move |
 | `↵` | open the alert card (rule, MITRE, agent, data, full log, compliance); `esc` back |
+| `y` | alert card: copy the full log to the clipboard |
 | `+` / `-` | minimum level up / down (0-15), re-queries |
 | `s` | toggle the `exclude_groups` filter, re-queries |
 | `a` | cycle the agent filter over agents present in the feed, then all |
 | `/` | substring filter over loaded rows (description, agent, rule id, full log); `Enter` applies, `Esc` clears; while typing, `q`, digits and `p` go into the prompt |
 | `p` | pause / resume auto-refresh |
 | `Ctrl+R` | refresh now |
+
+On the alert card, `y` copies the alert's full log to the system clipboard with
+an OSC 52 escape sequence — no external binaries, and it works through SSH as
+long as the terminal supports OSC 52: iTerm2, kitty, WezTerm, ghostty and
+Windows Terminal do; xterm needs `allowWindowOps`; Terminal.app ignores OSC 52.
+Under tmux it only reaches the clipboard with `set -g set-clipboard on` in
+`~/.tmux.conf`. The copied text is control-character-cleaned (the same form the
+card shows) and logs above 16 KiB are copied truncated, because terminals cap
+OSC sequence length; the status line reports what was copied.
 
 ## Agent detail
 
