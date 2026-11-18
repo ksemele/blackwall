@@ -43,6 +43,12 @@ type WazuhSubsystem struct {
 	User     string `yaml:"user"`
 	Password string `yaml:"password"`
 	TLS      TLS    `yaml:"tls"`
+
+	// Auth, when set, adds an SSO identity on top of the service
+	// user/password: the manager API has no SSO of its own, so the
+	// password stays (it must belong to a user with allow_run_as) and
+	// the OIDC token's claims are sent as the run_as context.
+	Auth *Auth `yaml:"auth,omitempty"`
 }
 
 type IndexerSubsystem struct {
@@ -52,7 +58,44 @@ type IndexerSubsystem struct {
 	Password string        `yaml:"password"`
 	TLS      TLS           `yaml:"tls"`
 	Alerts   AlertDefaults `yaml:"alerts"`
+
+	// Auth, when set, replaces user/password: the IdP token is sent as
+	// `Authorization: Bearer`, which the indexer's jwt/openid auth
+	// domain accepts. user and password must then be absent.
+	Auth *Auth `yaml:"auth,omitempty"`
 }
+
+// Auth selects OIDC (SSO) login for a subsystem instead of a password.
+type Auth struct {
+	// Type is the only supported scheme, "oidc". Required so a typo in
+	// a future scheme fails loudly instead of falling back to a password.
+	Type   string `yaml:"type"`
+	Issuer string `yaml:"issuer"` // the IdP issuer URL, e.g. https://sso.example.com/realms/wazuh
+
+	ClientID string   `yaml:"client_id"`
+	Scopes   []string `yaml:"scopes,omitempty"` // default DefaultAuthScopes
+	TLS      TLS      `yaml:"tls"`
+
+	// RunAs maps ID token claims to Wazuh API authorization-context
+	// entries (wazuh section only). Default: user_name from the sub claim.
+	RunAs []RunAsClaim `yaml:"run_as,omitempty"`
+}
+
+type RunAsClaim struct {
+	// Name is the authorization-context entry name, as declared in the
+	// manager's api.yaml auth_context (e.g. user_name, rbac:role).
+	Name string `yaml:"name"`
+	// Claim is the ID token claim to read (e.g. sub, preferred_username, roles).
+	Claim string `yaml:"claim"`
+}
+
+// DefaultAuthScopes applies when auth.scopes is omitted. offline_access asks
+// the IdP for a refresh token so blackwall does not re-login on every run.
+var DefaultAuthScopes = []string{"openid", "offline_access"}
+
+// DefaultRunAsClaims mirrors the default auth_context mapping the Wazuh
+// dashboard uses for SSO users.
+var DefaultRunAsClaims = []RunAsClaim{{Name: "user_name", Claim: "sub"}}
 
 type AlertDefaults struct {
 	MinLevel      *int     `yaml:"min_level"`      // nil → DefaultMinLevel

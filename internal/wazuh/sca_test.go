@@ -25,7 +25,7 @@ func TestListSCAPolicies_OK(t *testing.T) {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	policies, err := c.ListSCAPolicies(context.Background(), "001")
@@ -46,7 +46,7 @@ func TestListSCAPolicies_NonOK(t *testing.T) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	if _, err := c.ListSCAPolicies(context.Background(), "001"); err == nil {
@@ -73,7 +73,7 @@ func TestListSCAChecks_OK(t *testing.T) {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	checks, err := c.ListSCAChecks(context.Background(), "001", "cis_debian10")
@@ -94,7 +94,7 @@ func TestListSCAChecks_NonOK(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	if _, err := c.ListSCAChecks(context.Background(), "001", "cis_debian10"); err == nil {

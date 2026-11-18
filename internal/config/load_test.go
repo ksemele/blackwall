@@ -323,3 +323,166 @@ func TestResolve_OverridesBeatExplicitFalse(t *testing.T) {
 		t.Errorf("BW_SELECT_CONTEXT_ON_START=true lost to file false")
 	}
 }
+
+const ssoYAML = `
+current: lab
+contexts:
+  lab:
+    wazuh:
+      server: 127.0.0.1
+      port: 55000
+      user: svc
+      password: svc-pw
+      auth:
+        type: oidc
+        issuer: ${BW_TEST_SSO_ISSUER}
+        client_id: ${BW_TEST_SSO_CLIENT}
+    indexer:
+      server: 127.0.0.1
+      port: 9200
+      auth:
+        type: oidc
+        issuer: https://sso.example.com/realms/lab
+        client_id: blackwall
+        scopes: [openid]
+        tls:
+          insecure_skip_verify: true
+`
+
+func TestAuth_ParsedDefaultedExpandedValidated(t *testing.T) {
+	t.Setenv("BW_TEST_SSO_ISSUER", "https://sso.example.com/realms/lab")
+	t.Setenv("BW_TEST_SSO_CLIENT", "blackwall")
+
+	raw, err := Load(writeTempFile(t, "config.yaml", ssoYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := ExpandEnv(ApplyDefaults(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := cfg.Contexts["lab"].Wazuh
+	if w.Auth == nil {
+		t.Fatal("wazuh auth missing")
+	}
+	if w.Auth.Issuer != "https://sso.example.com/realms/lab" || w.Auth.ClientID != "blackwall" {
+		t.Errorf("wazuh auth env expansion: %+v", w.Auth)
+	}
+	if strings.Join(w.Auth.Scopes, ",") != strings.Join(DefaultAuthScopes, ",") {
+		t.Errorf("wazuh scopes = %v, want defaults", w.Auth.Scopes)
+	}
+	if len(w.Auth.RunAs) != 1 || w.Auth.RunAs[0].Name != "user_name" || w.Auth.RunAs[0].Claim != "sub" {
+		t.Errorf("wazuh run_as = %v, want the default sub mapping", w.Auth.RunAs)
+	}
+
+	x := cfg.Contexts["lab"].Indexer
+	if x.Auth == nil {
+		t.Fatal("indexer auth missing")
+	}
+	if strings.Join(x.Auth.Scopes, ",") != "openid" {
+		t.Errorf("indexer scopes = %v, want explicit [openid]", x.Auth.Scopes)
+	}
+	if len(x.Auth.RunAs) != 0 {
+		t.Errorf("indexer run_as = %v, want untouched (no default mapping there)", x.Auth.RunAs)
+	}
+	if !x.Auth.TLS.InsecureSkipVerify {
+		t.Error("indexer auth.tls.insecure_skip_verify lost")
+	}
+	if err := Validate(cfg); err != nil {
+		t.Errorf("Validate: %v", err)
+	}
+}
+
+func TestAuth_ValidateRules(t *testing.T) {
+	baseWazuh := func() *WazuhSubsystem {
+		return &WazuhSubsystem{Server: "h", Port: 1, User: "u", Password: "p"}
+	}
+	cases := []struct {
+		name    string
+		cfg     Config
+		wantErr string // "" means valid
+	}{
+		{
+			"indexer auth with user/password",
+			Config{Current: "x", Contexts: map[string]Context{"x": {Indexer: &IndexerSubsystem{
+				Server: "h", Port: 1, User: "u", Password: "p",
+				Auth: &Auth{Type: "oidc", Issuer: "https://sso.example.com", ClientID: "c"},
+			}}}},
+			"user/password must be absent",
+		},
+		{
+			"indexer auth-only is valid",
+			Config{Current: "x", Contexts: map[string]Context{"x": {Indexer: &IndexerSubsystem{
+				Server: "h", Port: 1,
+				Auth: &Auth{Type: "oidc", Issuer: "https://sso.example.com", ClientID: "c"},
+			}}}},
+			"",
+		},
+		{
+			"unsupported type",
+			Config{Current: "x", Contexts: map[string]Context{"x": {Wazuh: func() *WazuhSubsystem {
+				w := baseWazuh()
+				w.Auth = &Auth{Type: "saml", Issuer: "https://sso.example.com", ClientID: "c"}
+				return w
+			}()}}},
+			"not a supported type",
+		},
+		{
+			"missing issuer",
+			Config{Current: "x", Contexts: map[string]Context{"x": {Wazuh: func() *WazuhSubsystem {
+				w := baseWazuh()
+				w.Auth = &Auth{Type: "oidc", ClientID: "c"}
+				return w
+			}()}}},
+			"auth.issuer is required",
+		},
+		{
+			"missing client_id",
+			Config{Current: "x", Contexts: map[string]Context{"x": {Indexer: &IndexerSubsystem{
+				Server: "h", Port: 1,
+				Auth: &Auth{Type: "oidc", Issuer: "https://sso.example.com"},
+			}}}},
+			"auth.client_id is required",
+		},
+		{
+			"run_as entry missing claim",
+			Config{Current: "x", Contexts: map[string]Context{"x": {Wazuh: func() *WazuhSubsystem {
+				w := baseWazuh()
+				w.Auth = &Auth{Type: "oidc", Issuer: "https://sso.example.com", ClientID: "c",
+					RunAs: []RunAsClaim{{Name: "user_name"}}}
+				return w
+			}()}}},
+			"run_as[0]: name and claim are required",
+		},
+		{
+			"auth tls ca_file missing",
+			Config{Current: "x", Contexts: map[string]Context{"x": {Indexer: &IndexerSubsystem{
+				Server: "h", Port: 1,
+				Auth: &Auth{Type: "oidc", Issuer: "https://sso.example.com", ClientID: "c",
+					TLS: TLS{CAFile: "/nope/missing.crt"}},
+			}}}},
+			"auth.tls.ca_file",
+		},
+		{
+			"wazuh still needs user/password with auth",
+			Config{Current: "x", Contexts: map[string]Context{"x": {Wazuh: &WazuhSubsystem{
+				Server: "h", Port: 1,
+				Auth: &Auth{Type: "oidc", Issuer: "https://sso.example.com", ClientID: "c"},
+			}}}},
+			"server/port/user/password are all required",
+		},
+	}
+	for _, tc := range cases {
+		err := Validate(tc.cfg)
+		if tc.wantErr == "" {
+			if err != nil {
+				t.Errorf("%s: Validate: %v", tc.name, err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+			t.Errorf("%s: Validate err = %v, want it to contain %q", tc.name, err, tc.wantErr)
+		}
+	}
+}

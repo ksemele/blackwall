@@ -48,6 +48,31 @@ contexts:
       #   min_level: 5                            # default
       #   exclude_groups: [sca, blackwall_sessions]  # default
 
+  # SSO (OIDC) instead of indexer passwords — needs an IdP, see README
+  # "SSO (OIDC) login". For wazuh, user/password stay: the manager API
+  # authenticates a run_as-capable service user and the token's claims
+  # only name the person in the API logs.
+  # sso:
+  #   wazuh:
+  #     server: wazuh.example.com
+  #     port:   55000
+  #     user:     ${BW_SSO_WAZUH_RUNAS_USER}
+  #     password: ${BW_SSO_WAZUH_RUNAS_PASSWORD}
+  #     auth:
+  #       type: oidc
+  #       issuer:    https://sso.example.com/realms/wazuh
+  #       client_id: blackwall-cli
+  #       # scopes: [openid, offline_access]      # default
+  #       # run_as:                               # default; must match api.yaml auth_context
+  #       #   - { name: user_name, claim: sub }
+  #   indexer:
+  #     server: wazuh.example.com
+  #     port:   9200
+  #     auth:
+  #       type: oidc
+  #       issuer:    https://sso.example.com/realms/wazuh
+  #       client_id: blackwall-cli
+
 ui:
   refresh_interval: 3s
   theme:            dark

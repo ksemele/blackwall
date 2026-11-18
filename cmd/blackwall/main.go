@@ -17,7 +17,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/ksemele/blackwall/internal/app"
+	"github.com/ksemele/blackwall/internal/auth"
 	"github.com/ksemele/blackwall/internal/config"
+	"github.com/ksemele/blackwall/internal/indexer"
 	bwlog "github.com/ksemele/blackwall/internal/log"
 	"github.com/ksemele/blackwall/internal/oneshot"
 	"github.com/ksemele/blackwall/internal/tunnel"
@@ -161,6 +163,65 @@ func run() error {
 		return fmt.Errorf("context %q has no wazuh: subsystem", cfg.Current)
 	}
 
+	// One auth.Provider per issuer+client_id pair across all contexts: a
+	// login covers every subsystem and context that shares the IdP. New
+	// providers start silent; interactive login is only ever performed
+	// here, before the TUI takes over the screen.
+	providers := map[string]*auth.Provider{}
+	providerFor := func(a *config.Auth) (*auth.Provider, error) {
+		key := a.Issuer + "|" + a.ClientID
+		if p, ok := providers[key]; ok {
+			return p, nil
+		}
+		p, err := auth.New(*a, os.Stderr)
+		if err != nil {
+			return nil, err
+		}
+		providers[key] = p
+		return p, nil
+	}
+	// wazuhClaims / indexerTokens return the SSO source for a subsystem
+	// section, or an untyped nil when the section has no auth block.
+	wazuhClaims := func(sub *config.WazuhSubsystem) (wazuh.RunAsClaims, error) {
+		var nilClaims wazuh.RunAsClaims
+		if sub == nil || sub.Auth == nil {
+			return nilClaims, nil
+		}
+		p, err := providerFor(sub.Auth)
+		if err != nil {
+			return nilClaims, err
+		}
+		return p, nil
+	}
+	indexerTokens := func(sub *config.IndexerSubsystem) (indexer.TokenSource, error) {
+		var nilSource indexer.TokenSource
+		if sub == nil || sub.Auth == nil {
+			return nilSource, nil
+		}
+		p, err := providerFor(sub.Auth)
+		if err != nil {
+			return nilSource, err
+		}
+		return p, nil
+	}
+
+	// SSO login for the starting context happens now, in plain terminal
+	// range. If a context switch later needs a login that its cached
+	// session cannot serve, the views report it and the user re-runs
+	// blackwall with that context.
+	for _, a := range []*config.Auth{currentCtx.Wazuh.Auth, indexerAuth(currentCtx.Indexer)} {
+		if a == nil {
+			continue
+		}
+		p, err := providerFor(a)
+		if err != nil {
+			return err
+		}
+		if err := p.EnsureLogin(sigCtx); err != nil {
+			return err
+		}
+	}
+
 	live := newLiveTunnel()
 	defer live.Close() // also runs after a panic in this goroutine
 
@@ -184,7 +245,11 @@ func run() error {
 		// ctrl+r retries (or pick another context).
 		logger.Warn("ssh tunnel", "context", cfg.Current, "err", err)
 	}
-	client, err := wazuh.New(*dialCtx.Wazuh)
+	claims, err := wazuhClaims(dialCtx.Wazuh)
+	if err != nil {
+		return err
+	}
+	client, err := wazuh.New(*dialCtx.Wazuh, claims)
 	if err != nil {
 		return err
 	}
@@ -198,7 +263,11 @@ func run() error {
 
 	ctxView := ctxview.New(cfg)
 	agentsList := agentsview.NewView(client, cfg.UI.RefreshInterval)
-	idx, _, err := alertsview.SearcherFor(dialCtx.Indexer)
+	tokens, err := indexerTokens(dialCtx.Indexer)
+	if err != nil {
+		return err
+	}
+	idx, _, err := alertsview.SearcherFor(dialCtx.Indexer, tokens)
 	if err != nil {
 		return err
 	}
@@ -261,11 +330,19 @@ func run() error {
 			if err != nil {
 				return fail(err)
 			}
-			newClient, err := wazuh.New(*dialCtx.Wazuh)
+			claims, err := wazuhClaims(dialCtx.Wazuh)
 			if err != nil {
 				return fail(err)
 			}
-			newIdx, _, err := alertsview.SearcherFor(dialCtx.Indexer)
+			newClient, err := wazuh.New(*dialCtx.Wazuh, claims)
+			if err != nil {
+				return fail(err)
+			}
+			tokens, err := indexerTokens(dialCtx.Indexer)
+			if err != nil {
+				return fail(err)
+			}
+			newIdx, _, err := alertsview.SearcherFor(dialCtx.Indexer, tokens)
 			if err != nil {
 				return fail(err)
 			}
@@ -323,4 +400,13 @@ func run() error {
 		return err
 	}
 	return nil
+}
+
+// indexerAuth returns the indexer section's auth block, or nil when there
+// is no indexer or no SSO configured.
+func indexerAuth(sub *config.IndexerSubsystem) *config.Auth {
+	if sub == nil {
+		return nil
+	}
+	return sub.Auth
 }

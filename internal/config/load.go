@@ -68,6 +68,18 @@ func ApplyDefaults(cfg Config) Config {
 			ctx.SSH = &s
 			cfg.Contexts[name] = ctx
 		}
+		if ctx.Wazuh != nil && ctx.Wazuh.Auth != nil {
+			w := *ctx.Wazuh
+			w.Auth = applyAuthDefaults(*w.Auth, true)
+			ctx.Wazuh = &w
+			cfg.Contexts[name] = ctx
+		}
+		if ctx.Indexer != nil && ctx.Indexer.Auth != nil {
+			x := *ctx.Indexer
+			x.Auth = applyAuthDefaults(*x.Auth, false)
+			ctx.Indexer = &x
+			cfg.Contexts[name] = ctx
+		}
 		if ctx.Indexer == nil {
 			continue
 		}
@@ -83,6 +95,18 @@ func ApplyDefaults(cfg Config) Config {
 		cfg.Contexts[name] = ctx
 	}
 	return cfg
+}
+
+// applyAuthDefaults fills an auth block. runAsOnly marks a wazuh block:
+// only wazuh gets the default run_as claim mapping.
+func applyAuthDefaults(a Auth, runAsOnly bool) *Auth {
+	if len(a.Scopes) == 0 {
+		a.Scopes = DefaultAuthScopes
+	}
+	if runAsOnly && len(a.RunAs) == 0 {
+		a.RunAs = DefaultRunAsClaims
+	}
+	return &a
 }
 
 var envVarRE = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
@@ -126,6 +150,12 @@ func ExpandEnv(cfg Config) (Config, error) {
 			w.Password = expand(w.Password, "wazuh.password")
 			w.TLS.CAFile = expand(w.TLS.CAFile, "wazuh.tls.ca_file")
 			w.TLS.ServerName = expand(w.TLS.ServerName, "wazuh.tls.server_name")
+			if w.Auth != nil {
+				a := *w.Auth
+				a.Issuer = expand(a.Issuer, "wazuh.auth.issuer")
+				a.ClientID = expand(a.ClientID, "wazuh.auth.client_id")
+				w.Auth = &a
+			}
 			ctx.Wazuh = &w
 		}
 		if ctx.Indexer != nil {
@@ -135,6 +165,12 @@ func ExpandEnv(cfg Config) (Config, error) {
 			x.Password = expand(x.Password, "indexer.password")
 			x.TLS.CAFile = expand(x.TLS.CAFile, "indexer.tls.ca_file")
 			x.TLS.ServerName = expand(x.TLS.ServerName, "indexer.tls.server_name")
+			if x.Auth != nil {
+				a := *x.Auth
+				a.Issuer = expand(a.Issuer, "indexer.auth.issuer")
+				a.ClientID = expand(a.ClientID, "indexer.auth.client_id")
+				x.Auth = &a
+			}
 			ctx.Indexer = &x
 		}
 		if expandErr != nil {
@@ -171,9 +207,30 @@ func Validate(cfg Config) error {
 					)
 				}
 			}
+			if w.Auth != nil {
+				if err := validateAuth(name, "wazuh", w.Auth); err != nil {
+					return err
+				}
+				for i, m := range w.Auth.RunAs {
+					if m.Name == "" || m.Claim == "" {
+						return fmt.Errorf(
+							"contexts.%s.wazuh.auth.run_as[%d]: name and claim are required", name, i,
+						)
+					}
+				}
+			}
 		}
 		if x := ctx.Indexer; x != nil {
-			if x.Server == "" || x.Port == 0 || x.User == "" || x.Password == "" {
+			if x.Auth != nil {
+				if x.User != "" || x.Password != "" {
+					return fmt.Errorf(
+						"contexts.%s.indexer: user/password must be absent when auth is set", name,
+					)
+				}
+				if err := validateAuth(name, "indexer", x.Auth); err != nil {
+					return err
+				}
+			} else if x.Server == "" || x.Port == 0 || x.User == "" || x.Password == "" {
 				return fmt.Errorf("contexts.%s.indexer: server/port/user/password are all required", name)
 			}
 			if x.TLS.CAFile != "" {
@@ -184,6 +241,25 @@ func Validate(cfg Config) error {
 			if l := x.Alerts.MinLevel; l != nil && (*l < 0 || *l > 15) {
 				return fmt.Errorf("contexts.%s.indexer.alerts.min_level: %d is outside 0–15", name, *l)
 			}
+		}
+	}
+	return nil
+}
+
+// validateAuth checks the common auth-block fields.
+func validateAuth(ctxName, section string, a *Auth) error {
+	if a.Type != "oidc" {
+		return fmt.Errorf("contexts.%s.%s.auth.type: %q is not a supported type (only oidc)", ctxName, section, a.Type)
+	}
+	if a.Issuer == "" {
+		return fmt.Errorf("contexts.%s.%s.auth.issuer is required", ctxName, section)
+	}
+	if a.ClientID == "" {
+		return fmt.Errorf("contexts.%s.%s.auth.client_id is required", ctxName, section)
+	}
+	if a.TLS.CAFile != "" {
+		if _, err := os.Stat(a.TLS.CAFile); err != nil {
+			return fmt.Errorf("contexts.%s.%s.auth.tls.ca_file: %v", ctxName, section, err)
 		}
 	}
 	return nil

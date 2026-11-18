@@ -27,14 +27,15 @@ type Settings struct {
 	Refresh       time.Duration
 }
 
-// SearcherFor builds the indexer client for a context. It returns an untyped
-// nil (never a nil *indexer.Client wrapped in the interface) when the context
-// has no indexer section, so `searcher == nil` checks work.
-func SearcherFor(sub *config.IndexerSubsystem) (Searcher, string, error) {
+// SearcherFor builds the indexer client for a context. tokens must match
+// sub.Auth (nil ⇔ no auth block). It returns an untyped nil (never a nil
+// *indexer.Client wrapped in the interface) when the context has no
+// indexer section, so `searcher == nil` checks work.
+func SearcherFor(sub *config.IndexerSubsystem, tokens indexer.TokenSource) (Searcher, string, error) {
 	if sub == nil {
 		return nil, "", nil
 	}
-	c, err := indexer.New(*sub)
+	c, err := indexer.New(*sub, tokens)
 	if err != nil {
 		return nil, "", err
 	}

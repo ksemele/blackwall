@@ -26,7 +26,7 @@ func goldenClient(t *testing.T, file string) *Client {
 		}
 		_, _ = w.Write(body)
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 	return c
 }
