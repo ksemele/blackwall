@@ -13,10 +13,27 @@ A Bubbletea TUI, layered as:
                        TLS server name. `cmd/blackwall` owns the active tunnel
                        (`liveTunnel`) and swaps it on context switch.
 - `internal/sessions` — parser for `last` output.
+- `internal/log`     — builds the slog logger: JSON lines into the log file.
+- `internal/oneshot` — `--once` text mode: one snapshot of the agent list to stdout
+                       (table, or a JSON array with `--json`), no TUI.
+- `internal/tickcmd` — wraps `tea.Tick` so views subscribe to periodic refresh ticks
+                       without touching Bubbletea internals.
 - `internal/app`     — root `tea.Model` with view router, command palette, global hotkeys.
-- `internal/views/*` — top-level views (`:contexts`, `:agents`, `:alerts`). Each implements
-                       `views.View` and is registered in `cmd/blackwall/main.go`.
-- `internal/ui/*`    — render helpers (`tabbar`, `statusbar`, `footer`, `styles`, `scroll` for scroll lists).
+- `internal/views`   — the `views.View` interface every top-level screen implements.
+- `internal/views/contexts` — the `:contexts` k9s-style context picker.
+- `internal/views/agents`   — the `:agents` list and the agent detail card (`DetailModel`
+                              plus one sub-view file per tab).
+- `internal/views/alerts`   — the `:alerts` search list and alert card.
+- `internal/views/help`     — the `:help` keyboard reference; `app` overlays it on `?`.
+- `internal/ui/tabbar`  — the top tab strip of registered views.
+- `internal/ui/statusbar` — the per-frame status line.
+- `internal/ui/footer`  — the bottom keymap hints.
+- `internal/ui/styles`  — the dark theme.
+- `internal/ui/table`   — k9s-style tables whose columns stretch to the terminal width.
+- `internal/ui/scroll`  — `List` (windowed list: cursor, half-page, `g/G`, filter keys)
+                          and `Pager` (plain text taller than the terminal).
+- `internal/ui/safe`    — strips terminal control characters from text coming from the
+                          indexer and from agents, so data cannot rewrite the terminal.
 
 ## Adding a new view
 
@@ -24,6 +41,36 @@ A Bubbletea TUI, layered as:
 2. Implement the `views.View` interface (`Init`, `Update`, `View`, `Name`, `Hints`).
 3. Append it to the `registered` slice in `cmd/blackwall/main.go`.
 4. It becomes available as a `[N]` tab and as `:<name>` in the command palette automatically.
+
+## Adding an agent-detail tab
+
+Tabs live in `internal/views/agents`: one file per tab (like `packages.go`) with a
+matching `_test.go`. `DetailModel` (`detail.go`) owns the tab bar and the sub-views.
+
+1. Write the sub-view: a type implementing the `subView` interface (`Init`, `Update`,
+   `View`) in `subview.go`. Fetch data in a `tea.Cmd` returned from `Init` and apply
+   the result via a `<Tab>LoadedMsg` handled in `Update`.
+2. Add the tab name to `detailTabs`, the hotkey label to `detailTabKeys` (same order,
+   same length) and the lower-case key to `tabIndex`. Pick a letter not used by
+   `o h t k n s e` and not a global key (`q`, digits, `p`, `?`, `r`, `l`, `esc`, arrows).
+3. Create the sub-view in `NewDetail`: add it to `subs` at the index the tab has in
+   `detailTabs`; `switchTab` calls its `Init()` on activation. Overview is the only
+   tab without a sub-view (index 0, rendered by `renderOverview`).
+4. Decide how the tab scrolls:
+   - A static tab (like `Network` or `Security`) implements only `subView`;
+     `DetailModel` scrolls it: `paged()` detects it, `View()` renders the tab through
+     a `scroll.Pager`, `Update` handles the scroll keys and `Hints()` adds them only
+     when the tab is taller than the body. `app`'s `clipBody` still clips anything
+     taller than the body area.
+   - A tab that windows itself — a `scroll.List` with a `/` filter, like `Top`,
+     `Packages` and `Sessions` — implements `sizedView` (`SetSize` receives the body
+     height, `DetailModel` then leaves it alone), `keyCapturer` (`CapturesKeys()`
+     returns true while the filter prompt is open, so tab hotkeys and `r` go to the
+     prompt) and `hintProvider` (`Hints()` adds footer keys while the tab is active).
+5. Lock the optional interfaces in `subview.go` (`var _ sizedView = (*XModel)(nil)` …)
+   so a signature typo breaks the build instead of silently disabling them.
+6. Add `<tab>_test.go`: send messages to `Update`, check the model or the rendered
+   `View()` (see `packages_test.go`).
 
 ## Asynchronous work
 
