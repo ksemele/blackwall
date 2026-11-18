@@ -51,8 +51,9 @@ matching `_test.go`. `DetailModel` (`detail.go`) owns the tab bar and the sub-vi
    `View`) in `subview.go`. Fetch data in a `tea.Cmd` returned from `Init` and apply
    the result via a `<Tab>LoadedMsg` handled in `Update`.
 2. Add the tab name to `detailTabs`, the hotkey label to `detailTabKeys` (same order,
-   same length) and the lower-case key to `tabIndex`. Pick a letter not used by
-   `o h t k n s e` and not a global key (`q`, digits, `p`, `?`, `r`, `l`, `esc`, arrows).
+   same length) and the lower-case key to `tabIndex`. Pick a letter not used by the
+   other tabs (`o h t k n s e`), by the agent-card keys handled in `DetailModel.Update`
+   (`r` refresh, `l` alerts) or by the app-wide keys (`q`, digits, `p`, `?`).
 3. Create the sub-view in `NewDetail`: add it to `subs` at the index the tab has in
    `detailTabs`; `switchTab` calls its `Init()` on activation. Overview is the only
    tab without a sub-view (index 0, rendered by `renderOverview`).
