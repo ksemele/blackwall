@@ -181,6 +181,82 @@ Wazuh indexer (OpenSearch). Contexts without it simply have no alerts feed.
 `alerts` is optional: an omitted `min_level` means 5, and an omitted
 `exclude_groups` means `[sca, blackwall_sessions]`. An explicit `0` or `[]` is kept.
 
+### SSO (OIDC) login
+
+Instead of a raw password, a context can authenticate against an OIDC
+identity provider (Keycloak, Authentik, …). An optional `auth:` block goes
+inside `wazuh:` and/or `indexer:`:
+
+```yaml
+  lab:
+    wazuh:
+      server:   127.0.0.1
+      port:     55000
+      user:     svc-blackwall        # API user with allow_run_as: true
+      password: ${BW_SSO_WAZUH_SVC_PASSWORD}
+      auth:
+        type:     oidc
+        issuer:   https://sso.example.com/realms/lab
+        client_id: blackwall
+        tls:
+          insecure_skip_verify: true # lab IdP with a self-signed cert
+    indexer:
+      server:   127.0.0.1
+      port:     9200
+      auth:                          # replaces user/password entirely
+        type:     oidc
+        issuer:   https://sso.example.com/realms/lab
+        client_id: blackwall
+        tls:
+          insecure_skip_verify: true
+```
+
+- `type` is `oidc` (the only supported type today). `issuer` and
+  `client_id` are required; endpoints and keys come from the provider's
+  discovery document. `scopes` default to `[openid, offline_access]`.
+- `blackwall` is a public client: no client secret in the config.
+- For the indexer the `auth` block replaces `user`/`password` (they are
+  rejected together at config validation) and search requests carry
+  `Authorization: Bearer <access token>`. The indexer must be configured
+  to accept JWTs from the same issuer — in Wazuh 4.x that is the
+  `jwt_auth_domain` in the indexer security config.
+- For the Wazuh API a password stays in the config: the API (4.x) has no
+  SSO. `user`/`password` must be a service user with `allow_run_as: true`
+  in `api.yaml`, and the signed-in person's identity is attached per
+  request via `POST /security/user/authenticate/run_as`. Which ID-token
+  claims become the run_as context is configured with `run_as`:
+
+  ```yaml
+        run_as:                          # default when omitted:
+          - name:  user_name             #   - name: user_name
+            claim: preferred_username    #     claim: sub
+  ```
+
+  `name` is the `auth_context` key configured in `api.yaml`; mapped
+  claims must be plain strings/numbers. Default maps the token's `sub`.
+
+**How the login works.** On startup, before the TUI opens: if the IdP
+publishes a device-authorization endpoint (Keycloak does) blackwall prints
+`open <url> and enter the code XXXX-XXXX` — works over ssh. Otherwise it
+prints a login URL (authorization-code flow with PKCE) that redirects
+back to a temporary `127.0.0.1` listener. The session (access + refresh
+tokens) is cached in the OS keyring under the service name `blackwall`,
+so later runs log in silently; access tokens are refreshed automatically.
+If the keyring is unavailable blackwall says so and keeps the session in
+memory for that run only — nothing is written to disk.
+
+**Caveats.**
+
+- The `run_as` identity is *asserted from your SSO session, not proven to
+  the manager*: anyone holding the service user's password can claim any
+  context. The SSO login authenticates you to blackwall; the manager
+  trusts the service user. Wazuh 4.x has no per-user API authentication;
+  audit attribution comes from the run_as context.
+- Interactive login happens once at startup. Switching to a context whose
+  SSO session is missing or expired asks you to re-run blackwall.
+- If a refresh token itself expires, re-run blackwall to log in again.
+- SAML-only IdPs are not supported; the IdP must expose OpenID Connect.
+
 ## Connecting to a manager
 
 The TUI talks to one manager per context: the Wazuh API (55000) and, optionally,

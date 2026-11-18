@@ -63,6 +63,7 @@ Full notes are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). In short:
 |---|---|
 | `cmd/blackwall` | flags, config loading, wiring, list of registered views |
 | `internal/config` | YAML config, defaults, `${VAR}` expansion, CLI overrides, first-run template |
+| `internal/auth` | SSO (OIDC) login: discovery, device flow, PKCE loopback, refresh, keyring session cache |
 | `internal/wazuh` | Wazuh Manager API client (JWT, TLS, caching) |
 | `internal/indexer` | Wazuh indexer (OpenSearch) alert queries |
 | `internal/httpclient` | shared TLS-aware HTTP client |
