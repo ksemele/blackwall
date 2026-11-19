@@ -100,8 +100,10 @@ type RunAsClaim struct {
 // (Google ignores this scope; there the IdP needs access_type=offline).
 var DefaultAuthScopes = []string{"openid", "offline_access"}
 
-// DefaultAuthToken: the indexer's OpenID/JWT security domain validates an
-// ID token against the IdP JWKS; access tokens are not JWTs at many IdPs.
+// DefaultAuthToken: the indexer's OpenID/JWT security domains accept ID
+// tokens (the OpenID domain validates them against the IdP JWKS, the JWT
+// domain against a configured signing key); access tokens are not JWTs at
+// many IdPs.
 var DefaultAuthToken = "id_token"
 
 // DefaultRunAsClaims maps the token's stable subject into the

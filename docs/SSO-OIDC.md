@@ -18,8 +18,8 @@ So blackwall splits the problem the way the dashboard does:
 - **Identity to blackwall is real SSO.** The analyst logs in to the IdP
   (device flow or PKCE); blackwall itself never stores a personal
   password, and the indexer (the sensitive data path) is authenticated
-  with the IdP token itself (`jwt_auth_domain` / OpenSearch `openid`
-  domain), end to end.
+  with the IdP token itself (`openid_auth_domain` / `jwt_auth_domain` in
+  the indexer security config), end to end.
 - **Identity to the manager is asserted via run_as.** A service user with
   `allow_run_as` authenticates the API session; the analyst's ID-token
   claims are mapped into the authorization context object that *is* the
@@ -75,11 +75,19 @@ ksemele/blackwall-stack; no such lab exists on this server):
 
 1. Keycloak container: realm `lab`, public client `blackwall` with
    standard flows + **device authorization grant enabled**, redirect URI
-   `http://127.0.0.1:*` (loopback port is random).
-2. Indexer: enable `jwt_auth_domain` in the indexer security config
-   (issuer = realm URL, JWKS endpoint, claim → backend role); it validates
-   the ID token with `audience = client_id` (that is the default
-   `auth.token`).
+   `http://127.0.0.1:*` (loopback port is random); confirm the realm
+   discovery document actually publishes `device_authorization_endpoint`.
+2. Indexer: enable a security config domain that accepts the token
+   blackwall sends (default `auth.token` is the ID token):
+   `openid_auth_domain` (`type: openid`) with `openid_connect_url` set to
+   the realm's `.well-known/openid-configuration` (JWKS validation — the
+   plugin reads `jwks_uri` from that document) and `subject_key` /
+   `roles_key` mapping the claims (OpenSearch
+   `_security/authentication-backends/openid-connect.md`); or
+   `jwt_auth_domain` (`type: jwt`) with the realm's `signing_key` and
+   optional `required_audience` / `required_issuer` (`.../jwt.md`). Which
+   claims the indexer enforces (audience, issuer) is verified in this
+   lab, not offline.
 3. Wazuh API: service user for the config; enable its run_as flag with
    `PUT /security/users/<user_id>/run_as?allow_run_as=true` (off by
    default, not an `api.yaml` setting) and grant roles through RBAC rules
