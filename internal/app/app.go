@@ -249,6 +249,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.seq == m.statusSeq {
 			m.statusMsg = ""
 		}
+		return m, nil
 
 	case BackMsg:
 		if m.helpOpen {
