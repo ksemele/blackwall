@@ -103,6 +103,9 @@ func applyAuthDefaults(a Auth, runAsOnly bool) *Auth {
 	if len(a.Scopes) == 0 {
 		a.Scopes = DefaultAuthScopes
 	}
+	if a.Token == "" {
+		a.Token = DefaultAuthToken
+	}
 	if runAsOnly && len(a.RunAs) == 0 {
 		a.RunAs = DefaultRunAsClaims
 	}
@@ -256,6 +259,11 @@ func validateAuth(ctxName, section string, a *Auth) error {
 	}
 	if a.ClientID == "" {
 		return fmt.Errorf("contexts.%s.%s.auth.client_id is required", ctxName, section)
+	}
+	// Empty means "unset": ApplyDefaults fills id_token, and the provider
+	// treats it the same way.
+	if a.Token != "" && a.Token != "id_token" && a.Token != "access_token" {
+		return fmt.Errorf("contexts.%s.%s.auth.token: %q is not supported (id_token or access_token)", ctxName, section, a.Token)
 	}
 	if a.TLS.CAFile != "" {
 		if _, err := os.Stat(a.TLS.CAFile); err != nil {

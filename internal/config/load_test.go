@@ -372,6 +372,9 @@ func TestAuth_ParsedDefaultedExpandedValidated(t *testing.T) {
 	if strings.Join(w.Auth.Scopes, ",") != strings.Join(DefaultAuthScopes, ",") {
 		t.Errorf("wazuh scopes = %v, want defaults", w.Auth.Scopes)
 	}
+	if w.Auth.Token != DefaultAuthToken {
+		t.Errorf("wazuh auth.token = %q, want default %q", w.Auth.Token, DefaultAuthToken)
+	}
 	if len(w.Auth.RunAs) != 1 || w.Auth.RunAs[0].Name != "user_name" || w.Auth.RunAs[0].Claim != "sub" {
 		t.Errorf("wazuh run_as = %v, want the default sub mapping", w.Auth.RunAs)
 	}
@@ -382,6 +385,9 @@ func TestAuth_ParsedDefaultedExpandedValidated(t *testing.T) {
 	}
 	if strings.Join(x.Auth.Scopes, ",") != "openid" {
 		t.Errorf("indexer scopes = %v, want explicit [openid]", x.Auth.Scopes)
+	}
+	if x.Auth.Token != DefaultAuthToken {
+		t.Errorf("indexer auth.token = %q, want default %q", x.Auth.Token, DefaultAuthToken)
 	}
 	if len(x.Auth.RunAs) != 0 {
 		t.Errorf("indexer run_as = %v, want untouched (no default mapping there)", x.Auth.RunAs)
@@ -444,6 +450,14 @@ func TestAuth_ValidateRules(t *testing.T) {
 				Auth: &Auth{Type: "oidc", Issuer: "https://sso.example.com"},
 			}}}},
 			"auth.client_id is required",
+		},
+		{
+			"unsupported token selection",
+			Config{Current: "x", Contexts: map[string]Context{"x": {Indexer: &IndexerSubsystem{
+				Server: "h", Port: 1,
+				Auth: &Auth{Type: "oidc", Issuer: "https://sso.example.com", ClientID: "c", Token: "bearer"},
+			}}}},
+			"auth.token",
 		},
 		{
 			"run_as entry missing claim",

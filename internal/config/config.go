@@ -76,25 +76,36 @@ type Auth struct {
 	Scopes   []string `yaml:"scopes,omitempty"` // default DefaultAuthScopes
 	TLS      TLS      `yaml:"tls"`
 
+	// Token selects which token the indexer receives: "id_token"
+	// (default, validated by the indexer's JWT/OpenID security domain)
+	// or "access_token" (some IdPs mint access tokens OpenSearch accepts).
+	Token string `yaml:"token,omitempty"` // default DefaultAuthToken
+
 	// RunAs maps ID token claims to Wazuh API authorization-context
 	// entries (wazuh section only). Default: user_name from the sub claim.
 	RunAs []RunAsClaim `yaml:"run_as,omitempty"`
 }
 
 type RunAsClaim struct {
-	// Name is the authorization-context entry name, as declared in the
-	// manager's api.yaml auth_context (e.g. user_name, rbac:role).
-	Name string `yaml:"name"`
-	// Claim is the ID token claim to read (e.g. sub, preferred_username, roles).
+	// Name is the authorization-context key the RBAC rules match on
+	// (e.g. username, roles), Claim is the ID token claim to read (e.g.
+	// sub, preferred_username, groups). The claim value goes into the
+	// context as-is: strings, numbers, arrays.
+	Name  string `yaml:"name"`
 	Claim string `yaml:"claim"`
 }
 
 // DefaultAuthScopes applies when auth.scopes is omitted. offline_access asks
-// the IdP for a refresh token so blackwall does not re-login on every run.
+// the IdP for a refresh token so blackwall does not re-login on every run
+// (Google ignores this scope; there the IdP needs access_type=offline).
 var DefaultAuthScopes = []string{"openid", "offline_access"}
 
-// DefaultRunAsClaims mirrors the default auth_context mapping the Wazuh
-// dashboard uses for SSO users.
+// DefaultAuthToken: the indexer's OpenID/JWT security domain validates an
+// ID token against the IdP JWKS; access tokens are not JWTs at many IdPs.
+var DefaultAuthToken = "id_token"
+
+// DefaultRunAsClaims maps the token's stable subject into the
+// authorization-context key user_name.
 var DefaultRunAsClaims = []RunAsClaim{{Name: "user_name", Claim: "sub"}}
 
 type AlertDefaults struct {

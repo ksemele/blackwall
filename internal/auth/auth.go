@@ -9,6 +9,8 @@ package auth
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,14 +32,15 @@ type Provider struct {
 	cfg    config.Auth
 	stdout io.Writer // login prompts; os.Stderr in the binary
 
-	mu      sync.Mutex
-	httpc   *http.Client
-	idp     *oidc.Provider // filled by discover
-	oauth   *oauth2.Config // ditto
-	session *oauth2.Token  // current or cached session
-	idToken string         // the session's ID token; oauth2 extras do not survive the keyring round-trip, so it is kept explicitly
-	loaded  bool           // cache consulted once
-	cache   tokenCache
+	mu         sync.Mutex
+	httpc      *http.Client
+	idp        *oidc.Provider // filled by discover
+	oauth      *oauth2.Config // ditto
+	session    *oauth2.Token  // current or cached session
+	idToken    string         // the session's ID token; oauth2 extras do not survive the keyring round-trip, so it is kept explicitly
+	idTokenExp time.Time      // its exp claim (unverified read; verification happens before use)
+	loaded     bool           // cache consulted once
+	cache      tokenCache
 }
 
 // New builds a Provider for an auth block. Interactive login happens only
@@ -64,8 +67,8 @@ func (p *Provider) EnsureLogin(ctx context.Context) error {
 	return err
 }
 
-// AccessToken returns a fresh IdP access token for the indexer's Bearer
-// auth. Silent: it never prints login prompts.
+// AccessToken returns a fresh IdP access token. Used for the indexer's
+// Bearer auth when auth.token is access_token. Silent: no prompts.
 func (p *Provider) AccessToken(ctx context.Context) (string, error) {
 	t, err := p.token(ctx, false)
 	if err != nil {
@@ -77,51 +80,82 @@ func (p *Provider) AccessToken(ctx context.Context) (string, error) {
 	return t.AccessToken, nil
 }
 
+// idTokenRefreshWindow: refresh the ID token this close to its expiry so
+// the manager API (whose tokens live auth_token_exp_timeout=900s by
+// default) never gets a context built from an already-expired token.
+const idTokenRefreshWindow = 30 * time.Second
+
+// Token returns the bearer token for the indexer: the ID token by default
+// (the indexer's OpenID/JWT security domain validates it against the IdP
+// JWKS with audience = client_id), or the access token when
+// cfg.Token is "access_token". Silent: never prompts.
+func (p *Provider) Token(ctx context.Context) (string, error) {
+	if p.cfg.Token == "access_token" {
+		return p.AccessToken(ctx)
+	}
+	raw, _, err := p.verifiedIDToken(ctx)
+	return raw, err
+}
+
 // RunAsContext verifies the session's ID token against the IdP (JWKS,
-// issuer, audience, expiry) and maps its claims through cfg.RunAs to a
-// Wazuh API authorization-context string: "name=value;name=value".
-func (p *Provider) RunAsContext(ctx context.Context) (string, error) {
+// issuer, audience, expiry) and maps its claims through cfg.RunAs to the
+// Wazuh API authorization context: the JSON object the run_as endpoint
+// expects as its whole request body (nested objects and arrays allowed;
+// RBAC rules match it with MATCH/FIND).
+func (p *Provider) RunAsContext(ctx context.Context) (map[string]any, error) {
+	_, claims, err := p.verifiedIDToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return runAsContext(p.cfg.RunAs, claims)
+}
+
+// verifiedIDToken returns the session's ID token (raw + verified claims),
+// refreshing the session first when there is no ID token or it expires
+// within idTokenRefreshWindow — a live refresh token must be enough to
+// re-authenticate, even while the access token is still valid.
+func (p *Provider) verifiedIDToken(ctx context.Context) (string, map[string]any, error) {
 	if _, err := p.token(ctx, false); err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	p.mu.Lock()
-	if p.idToken == "" {
-		// Cached sessions carry no ID token (the token endpoint hands it
-		// out only on login and refresh). Force a real refresh call with a
-		// deliberately-expired copy, otherwise oauth2's token source would
-		// just hand back the still-valid cached token.
+	idExpiringSoon := p.idToken == "" ||
+		(!p.idTokenExp.IsZero() && time.Now().After(p.idTokenExp.Add(-idTokenRefreshWindow)))
+	if idExpiringSoon {
 		if p.session == nil || p.session.RefreshToken == "" {
 			p.mu.Unlock()
-			return "", fmt.Errorf("oidc: cached session has no ID token and no refresh token: restart blackwall to log in")
+			return "", nil, fmt.Errorf("oidc: cached session has no usable ID token and no refresh token: restart blackwall to log in")
 		}
+		// Force a real refresh: oauth2's token source would otherwise hand
+		// back the still-valid cached access token without any request.
 		stale := *p.session
 		stale.Expiry = time.Now().Add(-time.Hour)
 		stale.ExpiresIn = 0
 		t, err := p.refreshLocked(ctx, &stale)
 		if err != nil {
 			p.mu.Unlock()
-			return "", err
+			return "", nil, err
 		}
 		p.setTokenLocked(t)
 	}
-	idp, rawID, mappings := p.idp, p.idToken, p.cfg.RunAs
+	idp, rawID := p.idp, p.idToken
 	p.mu.Unlock()
 
 	if rawID == "" {
-		return "", fmt.Errorf("oidc: IdP returned no ID token (is the openid scope granted?)")
+		return "", nil, fmt.Errorf("oidc: IdP returned no ID token (is the openid scope granted?)")
 	}
 
 	verifier := idp.VerifierContext(oidc.ClientContext(ctx, p.httpc), &oidc.Config{ClientID: p.cfg.ClientID})
 	idt, err := verifier.Verify(ctx, rawID)
 	if err != nil {
-		return "", fmt.Errorf("oidc: ID token rejected: %w", err)
+		return "", nil, fmt.Errorf("oidc: ID token rejected: %w", err)
 	}
 	var claims map[string]any
 	if err := idt.Claims(&claims); err != nil {
-		return "", fmt.Errorf("oidc: ID token claims: %w", err)
+		return "", nil, fmt.Errorf("oidc: ID token claims: %w", err)
 	}
-	return runAsContext(mappings, claims)
+	return rawID, claims, nil
 }
 
 // token returns a valid session token, discovering the IdP on first use.
@@ -174,8 +208,31 @@ func (p *Provider) setTokenLocked(t *oauth2.Token) {
 	p.session = t
 	if id, _ := t.Extra("id_token").(string); id != "" {
 		p.idToken = id
+		p.idTokenExp = claimExpiry(id)
 	}
 	p.cache.set(p.cacheKey(), t)
+}
+
+// claimExpiry reads the exp claim of a JWT without verifying it. The value
+// only decides whether to refresh early; every consumer verifies the token
+// against the IdP afterwards, so an unparseable exp just means "no early
+// refresh".
+func claimExpiry(jwt string) time.Time {
+	parts := strings.Split(jwt, ".")
+	if len(parts) != 3 {
+		return time.Time{}
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return time.Time{}
+	}
+	var claims struct {
+		Exp *int64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil || claims.Exp == nil {
+		return time.Time{}
+	}
+	return time.Unix(*claims.Exp, 0)
 }
 
 func (p *Provider) refreshLocked(ctx context.Context, from *oauth2.Token) (*oauth2.Token, error) {
@@ -212,46 +269,40 @@ func (p *Provider) discoverLocked(ctx context.Context) error {
 	return nil
 }
 
-// runAsContext maps claims to "name=value" pairs joined with ";", the
-// format the Wazuh API run_as endpoint expects.
-func runAsContext(mappings []config.RunAsClaim, claims map[string]any) (string, error) {
-	parts := make([]string, 0, len(mappings))
+// runAsContext maps claims to the authorization context object posted as
+// the run_as request body (spec.yaml: requestBody is the context itself,
+// nested objects and arrays allowed, e.g. {"name": "Bill", "office":
+// ["20", "21"]}). Claim values go in as they are; RBAC rules match the
+// context with MATCH/FIND operators.
+func runAsContext(mappings []config.RunAsClaim, claims map[string]any) (map[string]any, error) {
+	ctxMap := make(map[string]any, len(mappings))
 	for _, m := range mappings {
 		raw, ok := claims[m.Claim]
 		if !ok {
-			return "", fmt.Errorf("oidc: claim %q is not in the ID token; check auth.scopes and the IdP's claim mappings", m.Claim)
+			return nil, fmt.Errorf("oidc: claim %q is not in the ID token; check auth.scopes and the IdP's claim mappings", m.Claim)
 		}
-		val, err := scalarClaim(m.Claim, raw)
-		if err != nil {
-			return "", err
+		if err := checkClaimValue(m.Claim, raw); err != nil {
+			return nil, err
 		}
-		parts = append(parts, m.Name+"="+val)
+		ctxMap[m.Name] = raw
 	}
-	return strings.Join(parts, ";"), nil
+	return ctxMap, nil
 }
 
-// scalarClaim renders a claim value as one authorization-context value.
-// Arrays and objects are rejected: the Wazuh auth_context docs only
-// describe single values per name.
-func scalarClaim(claim string, raw any) (string, error) {
-	var val string
+// checkClaimValue rejects claims that carry no information (null, empty
+// string, empty array); everything else is JSON-encodable as-is.
+func checkClaimValue(claim string, raw any) error {
 	switch v := raw.(type) {
+	case nil:
+		return fmt.Errorf("oidc: claim %q is null in the ID token", claim)
 	case string:
-		val = v
-	case float64:
-		val = fmt.Sprintf("%.0f", v)
-	case bool:
-		val = fmt.Sprintf("%t", v)
-	default:
-		return "", fmt.Errorf("oidc: claim %q must map to a scalar, got %T", claim, raw)
-	}
-	if val == "" {
-		return "", fmt.Errorf("oidc: claim %q is empty", claim)
-	}
-	for _, r := range val {
-		if r == ';' || r == '=' || r < 0x20 || r == 0x7f {
-			return "", fmt.Errorf("oidc: claim %q contains %q, which cannot appear in a run_as context", claim, r)
+		if v == "" {
+			return fmt.Errorf("oidc: claim %q is empty", claim)
+		}
+	case []any:
+		if len(v) == 0 {
+			return fmt.Errorf("oidc: claim %q is an empty array", claim)
 		}
 	}
-	return val, nil
+	return nil
 }

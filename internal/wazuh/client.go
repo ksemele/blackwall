@@ -29,12 +29,14 @@ type Client struct {
 	clientCache
 }
 
-// RunAsClaims supplies the authorization context (built from an SSO token's
-// claims, see internal/auth) sent to /security/user/authenticate/run_as.
-// The user/password still authenticate the run_as-capable service user:
-// the manager API has no SSO of its own.
+// RunAsClaims supplies the authorization context (a JSON object built from
+// SSO ID-token claims, see internal/auth) posted as the whole body of
+// POST /security/user/authenticate/run_as — the Wazuh API's authorization
+// context format (api/api/spec/spec.yaml). RBAC rules match the object
+// with MATCH/FIND. The user/password still authenticate the run_as-capable
+// service user: the manager API has no SSO of its own.
 type RunAsClaims interface {
-	RunAsContext(ctx context.Context) (string, error)
+	RunAsContext(ctx context.Context) (map[string]any, error)
 }
 
 // New constructs a Client for the given Wazuh subsystem. claims must be
@@ -82,17 +84,17 @@ func (c *Client) Authenticate(ctx context.Context) error {
 	return c.storeToken(resp)
 }
 
-// authenticateRunAs authenticates the service user (Basic) and sends the
-// SSO claims as the authorization context, the Wazuh API's only
-// non-password identity path: the API logs then name the real person.
+// authenticateRunAs authenticates the service user (Basic) and posts the
+// SSO claims as the authorization context object — the Wazuh API's only
+// non-password identity path (spec.yaml: /security/user/authenticate/run_as
+// takes the context as its whole body; roles come from RBAC rules matching
+// it). The API logs then name the real person.
 func (c *Client) authenticateRunAs(ctx context.Context) error {
 	runAsCtx, err := c.claims.RunAsContext(ctx)
 	if err != nil {
 		return fmt.Errorf("authenticate run_as: %w", err)
 	}
-	body, err := json.Marshal(struct {
-		Context string `json:"context"`
-	}{Context: runAsCtx})
+	body, err := json.Marshal(runAsCtx)
 	if err != nil {
 		return err
 	}
@@ -110,7 +112,7 @@ func (c *Client) authenticateRunAs(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("authenticate run_as: HTTP %d (is the api user allowed run_as and does the context match api.yaml auth_context?)", resp.StatusCode)
+		return fmt.Errorf("authenticate run_as: HTTP %d (is the api user allowed run_as — PUT /security/users/<id>/run_as?allow_run_as=true — and do RBAC rules match the authorization context?)", resp.StatusCode)
 	}
 	return c.storeToken(resp)
 }

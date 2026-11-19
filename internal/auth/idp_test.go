@@ -37,8 +37,18 @@ type fakeIDP struct {
 	codeChallenge string
 	signEvil      bool
 
-	key     jose.JSONWebKey
-	evilKey jose.JSONWebKey
+	key       jose.JSONWebKey
+	evilKey   jose.JSONWebKey
+	idExpires int // ID token lifetime in seconds; 0 = 1h
+}
+
+// idExpires shortens the ID token lifetime (default 1h) to test refresh
+// scheduling independently from the access token's expires_in.
+func (f *fakeIDP) idExpiry() time.Duration {
+	if f.idExpires != 0 {
+		return time.Duration(f.idExpires) * time.Second
+	}
+	return time.Hour
 }
 
 func newFakeIDP(t *testing.T, deviceEndpoint bool) *fakeIDP {
@@ -203,7 +213,7 @@ func (f *fakeIDP) idToken(now time.Time) string {
 		"sub":                "alice-e1",
 		"preferred_username": "alice",
 		"roles":              []string{"analyst", "viewer"},
-		"exp":                now.Add(time.Hour).Unix(),
+		"exp":                now.Add(f.idExpiry()).Unix(),
 		"iat":                now.Unix(),
 	}
 	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: signingKey},

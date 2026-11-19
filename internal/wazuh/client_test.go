@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -85,16 +86,18 @@ func TestAuthenticate_401(t *testing.T) {
 }
 
 type stubClaims struct {
-	ctxStr string
+	ctxMap map[string]any
 	err    error
 }
 
-func (s stubClaims) RunAsContext(context.Context) (string, error) {
-	return s.ctxStr, s.err
+func (s stubClaims) RunAsContext(context.Context) (map[string]any, error) {
+	return s.ctxMap, s.err
 }
 
 // With SSO claims the client posts run_as with the service user's basic
-// creds and the claim-derived context body, then uses the returned token.
+// creds and the claim-derived authorization context as the whole JSON
+// body (spec.yaml: requestBody is the context object itself), then uses
+// the returned token.
 func TestAuthenticate_RunAs(t *testing.T) {
 	var gotBody string
 	srv := newServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -119,14 +122,18 @@ func TestAuthenticate_RunAs(t *testing.T) {
 		}{Token: "runas-jwt"}})
 	})
 
-	c, _ := New(subFromServer(srv, "svc", "svcpw"), stubClaims{ctxStr: "user_name=alice-e1"})
+	c, _ := New(subFromServer(srv, "svc", "svcpw"), stubClaims{ctxMap: map[string]any{"user_name": "alice-e1"}})
 	c.insecureScheme = "http"
 
 	if err := c.Authenticate(context.Background()); err != nil {
 		t.Fatalf("Authenticate: %v", err)
 	}
-	if want := `{"context":"user_name=alice-e1"}`; gotBody != want {
-		t.Errorf("body = %q, want %q", gotBody, want)
+	// The whole body is the authorization context object — no wrapper key.
+	var gotObj map[string]any
+	if err := json.Unmarshal([]byte(gotBody), &gotObj); err != nil {
+		t.Errorf("body %q is not a JSON object: %v", gotBody, err)
+	} else if !reflect.DeepEqual(gotObj, map[string]any{"user_name": "alice-e1"}) {
+		t.Errorf("body = %q, want the context object {\"user_name\":\"alice-e1\"}", gotBody)
 	}
 	if c.token != "runas-jwt" {
 		t.Errorf("token = %q, want runas-jwt", c.token)
@@ -150,7 +157,7 @@ func TestAuthenticate_RunAs401(t *testing.T) {
 	srv := newServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	})
-	c, _ := New(subFromServer(srv, "svc", "svcpw"), stubClaims{ctxStr: "user_name=x"})
+	c, _ := New(subFromServer(srv, "svc", "svcpw"), stubClaims{ctxMap: map[string]any{"user_name": "x"}})
 	c.insecureScheme = "http"
 	err := c.Authenticate(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "allowed run_as") {

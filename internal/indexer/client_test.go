@@ -114,7 +114,7 @@ func TestClient_Addr(t *testing.T) {
 
 type stubTokens struct{ err error }
 
-func (s stubTokens) AccessToken(context.Context) (string, error) {
+func (s stubTokens) Token(context.Context) (string, error) {
 	if s.err != nil {
 		return "", s.err
 	}

@@ -63,8 +63,8 @@ contexts:
   #       issuer:    https://sso.example.com/realms/wazuh
   #       client_id: blackwall-cli
   #       # scopes: [openid, offline_access]      # default
-  #       # run_as:                               # default; must match api.yaml auth_context
-  #       #   - { name: user_name, claim: sub }
+  #       # run_as:                               # default; the RBAC rules
+  #       #   - { name: user_name, claim: sub }   # match these context keys
   #   indexer:
   #     server: wazuh.example.com
   #     port:   9200
@@ -72,6 +72,7 @@ contexts:
   #       type: oidc
   #       issuer:    https://sso.example.com/realms/wazuh
   #       client_id: blackwall-cli
+  #       # token: id_token                       # default; or access_token
 
 ui:
   refresh_interval: 3s

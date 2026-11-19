@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -82,12 +83,12 @@ func TestDeviceFlowLoginRefreshAndClaims(t *testing.T) {
 		t.Errorf("AccessToken = %q, want at-2", tok)
 	}
 
-	ctxStr, err := p.RunAsContext(context.Background())
+	ctxMap, err := p.RunAsContext(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ctxStr != "user_name=alice-e1" {
-		t.Errorf("RunAsContext = %q, want user_name=alice-e1", ctxStr)
+	if !reflect.DeepEqual(ctxMap, map[string]any{"user_name": "alice-e1"}) {
+		t.Errorf("RunAsContext = %v, want {user_name: alice-e1}", ctxMap)
 	}
 
 	// 3 device polls (2 authorization_pending + success) and 2 refreshes:
@@ -136,12 +137,12 @@ func TestCachedSessionReusedByNewProvider(t *testing.T) {
 	}
 	// RunAsContext must refresh the cached session to get an ID token
 	// (extras do not survive the keyring round-trip) — a refresh grant.
-	ctxStr, err := p2.RunAsContext(context.Background())
+	ctxMap, err := p2.RunAsContext(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ctxStr != "user_name=alice-e1" {
-		t.Errorf("RunAsContext = %q", ctxStr)
+	if !reflect.DeepEqual(ctxMap, map[string]any{"user_name": "alice-e1"}) {
+		t.Errorf("RunAsContext = %v", ctxMap)
 	}
 	for _, g := range idp.grantLog() {
 		if g == "authorize" {
@@ -286,29 +287,33 @@ func TestForgedIDTokenRejected(t *testing.T) {
 }
 
 func TestRunAsContextMapping(t *testing.T) {
+	// Values as they come out of a decoded ID token: numbers float64,
+	// arrays []any (groups/roles claims).
 	claims := map[string]any{
 		"sub":                "alice-e1",
 		"preferred_username": "alice",
 		"uid":                float64(42),
 		"admin":              true,
-		"roles":              []string{"analyst", "viewer"},
+		"roles":              []any{"analyst", "viewer"},
 		"empty":              "",
-		"sneaky":             "a=b",
+		"emptyarr":           []any{},
 	}
 	cases := []struct {
 		name    string
 		mapping []config.RunAsClaim
-		want    string
+		want    map[string]any
 		wantErr string
 	}{
-		{"default", config.DefaultRunAsClaims, "user_name=alice-e1", ""},
-		{"two scalars", []config.RunAsClaim{{Name: "username", Claim: "preferred_username"}, {Name: "uid", Claim: "uid"}},
-			"username=alice;uid=42", ""},
-		{"bool", []config.RunAsClaim{{Name: "admin", Claim: "admin"}}, "admin=true", ""},
-		{"array claim", []config.RunAsClaim{{Name: "roles", Claim: "roles"}}, "", "must map to a scalar"},
-		{"missing claim", []config.RunAsClaim{{Name: "x", Claim: "nope"}}, "", "is not in the ID token"},
-		{"empty claim", []config.RunAsClaim{{Name: "x", Claim: "empty"}}, "", "claim \"empty\" is empty"},
-		{"forbidden char", []config.RunAsClaim{{Name: "x", Claim: "sneaky"}}, "", "cannot appear in a run_as context"},
+		{"default", config.DefaultRunAsClaims, map[string]any{"user_name": "alice-e1"}, ""},
+		{"two entries", []config.RunAsClaim{{Name: "username", Claim: "preferred_username"}, {Name: "uid", Claim: "uid"}},
+			map[string]any{"username": "alice", "uid": float64(42)}, ""},
+		{"bool", []config.RunAsClaim{{Name: "admin", Claim: "admin"}}, map[string]any{"admin": true}, ""},
+		// Arrays belong in the context: RBAC FIND rules match them.
+		{"array claim", []config.RunAsClaim{{Name: "roles", Claim: "roles"}},
+			map[string]any{"roles": []any{"analyst", "viewer"}}, ""},
+		{"missing claim", []config.RunAsClaim{{Name: "x", Claim: "nope"}}, nil, "is not in the ID token"},
+		{"empty claim", []config.RunAsClaim{{Name: "x", Claim: "empty"}}, nil, "claim \"empty\" is empty"},
+		{"empty array claim", []config.RunAsClaim{{Name: "x", Claim: "emptyarr"}}, nil, "is an empty array"},
 	}
 	for _, tc := range cases {
 		got, err := runAsContext(tc.mapping, claims)
@@ -322,8 +327,83 @@ func TestRunAsContextMapping(t *testing.T) {
 			t.Errorf("%s: %v", tc.name, err)
 			continue
 		}
-		if got != tc.want {
-			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+// TestIDTokenExpiryForcesRefresh covers the reviewed bug: the manager API
+// token lives auth_token_exp_timeout seconds (default 900 —
+// /data/refdocs/wazuh-api-spec/api/api/spec/spec.yaml,
+// /security/user/authenticate/run_as), so a context must never be built
+// from an already-expired ID token, even while the access token is still
+// valid. Fake IdP: access token 600s, ID token 10s — inside the 30s
+// refresh window — and re-auth must go through the refresh token.
+func TestIDTokenExpiryForcesRefresh(t *testing.T) {
+	keyring.MockInit()
+	idp := newFakeIDP(t, true)
+	idp.expires = 600
+	idp.idExpires = 10
+
+	out := &safeBuf{}
+	p, err := New(testAuthCfg(idp.url(), idp.clientID), out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.EnsureLogin(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	ctxMap, err := p.RunAsContext(context.Background())
+	if err != nil {
+		t.Fatalf("RunAsContext with a nearly-expired ID token: %v", err)
+	}
+	if !reflect.DeepEqual(ctxMap, map[string]any{"user_name": "alice-e1"}) {
+		t.Errorf("RunAsContext = %v", ctxMap)
+	}
+	grants := idp.grantLog()
+	if grants[len(grants)-1] != "refresh" {
+		t.Errorf("grants = %v, want a refresh after the ID token aged", grants)
+	}
+	if tok, err := p.AccessToken(context.Background()); err != nil || tok == "" {
+		t.Errorf("AccessToken after refresh: %q, %v", tok, err)
+	}
+}
+
+// TestIndexerTokenSelection: auth.token picks the indexer token. Default
+// id_token — a JWT the indexer's OpenID/JWT domain can validate against
+// the IdP JWKS with audience = client_id; access_token delivers the opaque
+// access token instead.
+func TestIndexerTokenSelection(t *testing.T) {
+	keyring.MockInit()
+	idp := newFakeIDP(t, true)
+
+	cfg := testAuthCfg(idp.url(), idp.clientID) // Token unset => id_token
+	out := &safeBuf{}
+	p, err := New(cfg, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.EnsureLogin(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	idTok, err := p.Token(context.Background())
+	if err != nil {
+		t.Fatalf("Token: %v", err)
+	}
+	if n := strings.Count(idTok, "."); n != 2 {
+		t.Errorf("Token() = %q..., want a verified ID token JWT (3 segments)", idTok)
+	}
+
+	cfg.Token = "access_token"
+	p2, err := New(cfg, &safeBuf{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p2.EnsureLogin(context.Background()); err != nil {
+		t.Fatalf("EnsureLogin with cached session: %v", err)
+	}
+	if tok, err := p2.Token(context.Background()); err != nil || tok != "at-1" {
+		t.Errorf("Token() with access_token = %q, %v; want the cached at-1", tok, err)
 	}
 }

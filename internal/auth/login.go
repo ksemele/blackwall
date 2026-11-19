@@ -69,22 +69,30 @@ func (p *Provider) loginLoopbackLocked(ctx context.Context) (*oauth2.Token, erro
 	conf.RedirectURL = fmt.Sprintf("http://127.0.0.1:%d/callback", port)
 
 	done := make(chan callbackResult, 1)
+	// report is non-blocking: a second /callback request (refresh, favicon
+	// probe) must not wedge the handler goroutine forever.
+	report := func(res callbackResult) {
+		select {
+		case done <- res:
+		default:
+		}
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		switch {
 		case q.Get("state") != state:
 			http.Error(w, "blackwall: state mismatch, login aborted", http.StatusBadRequest)
-			done <- callbackResult{err: fmt.Errorf("oidc callback: state mismatch")}
+			report(callbackResult{err: fmt.Errorf("oidc callback: state mismatch")})
 		case q.Get("error") != "":
 			http.Error(w, "blackwall: the IdP reported "+q.Get("error"), http.StatusBadRequest)
-			done <- callbackResult{err: fmt.Errorf("oidc callback: IdP error: %s", q.Get("error"))}
+			report(callbackResult{err: fmt.Errorf("oidc callback: IdP error: %s", q.Get("error"))})
 		case q.Get("code") == "":
 			http.Error(w, "blackwall: callback carried no code", http.StatusBadRequest)
-			done <- callbackResult{err: fmt.Errorf("oidc callback: no authorization code")}
+			report(callbackResult{err: fmt.Errorf("oidc callback: no authorization code")})
 		default:
 			fmt.Fprint(w, "blackwall: login complete, you can close this window.")
-			done <- callbackResult{code: q.Get("code")}
+			report(callbackResult{code: q.Get("code")})
 		}
 	})
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
