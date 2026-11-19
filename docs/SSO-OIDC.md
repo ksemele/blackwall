@@ -63,10 +63,36 @@ change would be to drop the service-user requirement in
 - `internal/indexer`: bearer tokens instead of Basic; `auth.token` picks
   ID token (default) or access token.
 - `internal/wazuh`: run_as posting the claim-mapped authorization context
-  object as the whole request body.
+  object as the whole request body; each wazuh block sends the context
+  built from its own `auth.run_as` mappings even when it shares a login
+  with another block, and an empty mapping is rejected instead of posting
+  `{}`.
 - `cmd/blackwall`: one interactive login per issuer+client_id at startup
   (before the TUI); mid-run context switches use the cached/silent
   session and ask for a re-run when it is missing.
+
+## Security trade-offs we knowingly take
+
+- **No `nonce`.** Neither the device flow nor the PKCE flow binds a
+  nonce to the login, so an ID token stolen from this client (keyring,
+  process memory) is replayable by another holder of the same client id
+  until it expires. Short ID-token lifetimes at the IdP plus the 30s
+  early-refresh policy keep that window small; the device flow cannot
+  carry a nonce at all, and PKCE alone binds the code exchange, not the
+  token's audience at use time.
+- **ID tokens are re-verified at use time.** run_as and
+  `auth.token: id_token` consumers validate the token against the IdP's
+  JWKS (signature, issuer, audience, expiry) on every use, so a tampered
+  or expired token never reaches an API. The key set is created once per
+  provider and cached — the JWKS is fetched on the first verification
+  and re-fetched only when a token names an unknown kid — which keeps
+  the cost at one request per session but makes a reachable IdP a hard
+  dependency for the whole session (lab checklist item 2).
+- **A refresh that stops returning `id_token` ends the session.** An
+  IdP (or a lost `openid` scope) that answers refresh grants without an
+  `id_token` leaves no way to renew the ID token; blackwall then drops
+  the cached session from the keyring and asks for a fresh login instead
+  of serving an unrenewable token until JWKS rejects it.
 
 ## Lab verification checklist (needs a real IdP — belongs to blackwall-stack)
 
