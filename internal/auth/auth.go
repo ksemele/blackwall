@@ -55,7 +55,7 @@ func New(cfg config.Auth, stdout io.Writer) (*Provider, error) {
 		cfg:    cfg,
 		stdout: stdout,
 		httpc:  httpc,
-		cache:  tokenCache{mem: map[string]*oauth2.Token{}, warn: stdout},
+		cache:  tokenCache{mem: map[string]cachedSession{}, warn: stdout},
 	}, nil
 }
 
@@ -85,12 +85,20 @@ func (p *Provider) AccessToken(ctx context.Context) (string, error) {
 // default) never gets a context built from an already-expired token.
 const idTokenRefreshWindow = 30 * time.Second
 
-// Token returns the bearer token for the indexer: the ID token by default
-// (the indexer's OpenID/JWT security domain validates it against the IdP
-// JWKS with audience = client_id), or the access token when
-// cfg.Token is "access_token". Silent: never prompts.
+// Token returns the token for the provider's own auth block (see TokenFor).
 func (p *Provider) Token(ctx context.Context) (string, error) {
-	if p.cfg.Token == "access_token" {
+	return p.TokenFor(ctx, p.cfg.Token)
+}
+
+// TokenFor returns the token a subsystem should send: "access_token" is
+// the opaque access token, anything else (including "") the ID token,
+// verified against the IdP (JWKS, issuer, audience, expiry) — the
+// indexer's OpenID/JWT security domains validate it against the IdP keys.
+// The kind comes from the consuming subsystem's auth.token, not from
+// whichever auth block first created this provider: subsystems sharing an
+// issuer+client can request different tokens. Silent: never prompts.
+func (p *Provider) TokenFor(ctx context.Context, kind string) (string, error) {
+	if kind == "access_token" {
 		return p.AccessToken(ctx)
 	}
 	raw, _, err := p.verifiedIDToken(ctx)
@@ -124,8 +132,14 @@ func (p *Provider) verifiedIDToken(ctx context.Context) (string, map[string]any,
 		(!p.idTokenExp.IsZero() && time.Now().After(p.idTokenExp.Add(-idTokenRefreshWindow)))
 	if idExpiringSoon {
 		if p.session == nil || p.session.RefreshToken == "" {
+			// No ID token to use and nothing that can mint one: this
+			// session is dead. Drop it from the cache so the advice below
+			// — restart and log in — actually produces a login instead of
+			// reloading the same unusable entry.
+			p.cache.drop(p.cacheKey())
+			p.session, p.idToken, p.idTokenExp = nil, "", time.Time{}
 			p.mu.Unlock()
-			return "", nil, fmt.Errorf("oidc: cached session has no usable ID token and no refresh token: restart blackwall to log in")
+			return "", nil, fmt.Errorf("oidc: SSO session for %s is expired and cannot be refreshed: restart blackwall to log in again", p.cfg.Issuer)
 		}
 		// Force a real refresh: oauth2's token source would otherwise hand
 		// back the still-valid cached access token without any request.
@@ -173,8 +187,12 @@ func (p *Provider) token(ctx context.Context, interactive bool) (*oauth2.Token, 
 	}
 	if !p.loaded {
 		p.loaded = true
-		if t := p.cache.get(p.cacheKey()); t != nil {
-			p.session = t
+		if s := p.cache.get(p.cacheKey()); s.Token != nil {
+			p.session = s.Token
+			if s.IDToken != "" {
+				p.idToken = s.IDToken
+				p.idTokenExp = claimExpiry(s.IDToken)
+			}
 		}
 	}
 	if p.session != nil && p.session.Valid() {
@@ -210,7 +228,7 @@ func (p *Provider) setTokenLocked(t *oauth2.Token) {
 		p.idToken = id
 		p.idTokenExp = claimExpiry(id)
 	}
-	p.cache.set(p.cacheKey(), t)
+	p.cache.set(p.cacheKey(), t, p.idToken)
 }
 
 // claimExpiry reads the exp claim of a JWT without verifying it. The value

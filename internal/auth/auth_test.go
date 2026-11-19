@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/zalando/go-keyring"
+	"golang.org/x/oauth2"
 
 	"github.com/ksemele/blackwall/internal/config"
 )
@@ -97,8 +98,8 @@ func TestDeviceFlowLoginRefreshAndClaims(t *testing.T) {
 		t.Errorf("grants = %v", grants)
 	}
 
-	// The session is persisted in the keyring under issuer|client.
-	if _, err := keyring.Get(keyringService, idp.url()+"|"+idp.clientID); err != nil {
+	// The session is persisted in the keyring under its SessionKey.
+	if _, err := keyring.Get(keyringService, SessionKey(testAuthCfg(idp.url(), idp.clientID))); err != nil {
 		t.Errorf("keyring entry missing: %v", err)
 	}
 }
@@ -135,8 +136,9 @@ func TestCachedSessionReusedByNewProvider(t *testing.T) {
 	if tok != "at-1" {
 		t.Errorf("AccessToken = %q, want the cached at-1", tok)
 	}
-	// RunAsContext must refresh the cached session to get an ID token
-	// (extras do not survive the keyring round-trip) — a refresh grant.
+	// RunAsContext must reuse the ID token restored from the keyring
+	// (cachedSession stores it beside the oauth2 token) — no extra IdP
+	// grant.
 	ctxMap, err := p2.RunAsContext(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -148,6 +150,135 @@ func TestCachedSessionReusedByNewProvider(t *testing.T) {
 		if g == "authorize" {
 			t.Error("interactive login happened for a cached session")
 		}
+		if g == "refresh" {
+			t.Errorf("cached ID token triggered a refresh grant: %v", idp.grantLog())
+			break
+		}
+	}
+}
+
+// TestCachedSessionWithoutRefreshToken covers the reviewed Google-style
+// case: a cached session with no refresh token must still serve run_as
+// and the default indexer token from the ID token stored in the keyring,
+// without any IdP call.
+func TestCachedSessionWithoutRefreshToken(t *testing.T) {
+	keyring.MockInit()
+	idp := newFakeIDP(t, true)
+
+	p, err := New(testAuthCfg(idp.url(), idp.clientID), &safeBuf{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.cache.set(p.cacheKey(), &oauth2.Token{
+		AccessToken: "at-nr",
+		TokenType:   "Bearer",
+		Expiry:      time.Now().Add(time.Hour),
+	}, idp.idToken(time.Now()))
+
+	if err := p.EnsureLogin(context.Background()); err != nil {
+		t.Fatalf("EnsureLogin with a refresh-less cached session: %v", err)
+	}
+	ctxMap, err := p.RunAsContext(context.Background())
+	if err != nil {
+		t.Fatalf("RunAsContext with a refresh-less cached session: %v", err)
+	}
+	if !reflect.DeepEqual(ctxMap, map[string]any{"user_name": "alice-e1"}) {
+		t.Errorf("RunAsContext = %v", ctxMap)
+	}
+	tok, err := p.Token(context.Background())
+	if err != nil || tok == "" || strings.Count(tok, ".") != 2 {
+		t.Errorf("Token = %q, err %v; want the cached ID token", tok, err)
+	}
+	if at, err := p.AccessToken(context.Background()); err != nil || at != "at-nr" {
+		t.Errorf("AccessToken = %q, err %v; want the cached at-nr", at, err)
+	}
+	if grants := idp.grantLog(); len(grants) != 0 {
+		t.Errorf("refresh-less cached session made IdP calls: %v", grants)
+	}
+}
+
+// TestUnusableCachedSessionIsDropped: a cached session whose ID token is
+// expired and that has no refresh token cannot be revived. It must be
+// removed from the keyring so the error's advice — restart blackwall to
+// log in again — leads to a real interactive login instead of reloading
+// the same broken entry.
+func TestUnusableCachedSessionIsDropped(t *testing.T) {
+	keyring.MockInit()
+	idp := newFakeIDP(t, true)
+	cfg := testAuthCfg(idp.url(), idp.clientID)
+
+	p, err := New(cfg, &safeBuf{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.cache.set(p.cacheKey(), &oauth2.Token{
+		AccessToken: "at-nr",
+		TokenType:   "Bearer",
+		Expiry:      time.Now().Add(time.Hour),
+	}, idp.idToken(time.Now().Add(-2*time.Hour))) // ID token already expired
+
+	if err := p.EnsureLogin(context.Background()); err != nil {
+		t.Fatal(err) // access token is still valid: no login at startup
+	}
+	if _, err := p.RunAsContext(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "restart blackwall to log in") {
+		t.Fatalf("RunAsContext err = %v; want the restart-to-login error", err)
+	}
+	if _, err := keyring.Get(keyringService, p.cacheKey()); !errors.Is(err, keyring.ErrNotFound) {
+		t.Errorf("unusable session still in the keyring: %v", err)
+	}
+
+	out := &safeBuf{}
+	p2, err := New(cfg, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p2.EnsureLogin(context.Background()); err != nil {
+		t.Fatalf("EnsureLogin after the drop: %v", err)
+	}
+	if out.String() == "" {
+		t.Error("expected an interactive login after the unusable session was dropped")
+	}
+	if grants := idp.grantLog(); len(grants) == 0 || grants[0] != "device" {
+		t.Errorf("grantLog = %v; want a fresh device login", grants)
+	}
+}
+
+// TestTokenSelectionPerSubsystem covers the reviewed bug: a wazuh and an
+// indexer block sharing issuer+client_id share one Provider (created from
+// whichever block came first), yet the indexer's auth.token must not be
+// silently ignored. SessionKey makes the sharing explicit; subsystems
+// pick their kind via TokenFor, as main.go's subsystemTokens does.
+func TestTokenSelectionPerSubsystem(t *testing.T) {
+	keyring.MockInit()
+	idp := newFakeIDP(t, true)
+
+	wazuhCfg := testAuthCfg(idp.url(), idp.clientID) // auth.token unset → id_token
+	indexerCfg := testAuthCfg(idp.url(), idp.clientID)
+	indexerCfg.Token = "access_token"
+	if SessionKey(wazuhCfg) != SessionKey(indexerCfg) {
+		t.Fatal("identical blocks must share one session")
+	}
+	differing := wazuhCfg
+	differing.TLS.InsecureSkipVerify = true
+	if SessionKey(differing) == SessionKey(wazuhCfg) {
+		t.Error("blocks with different TLS must not share a session")
+	}
+
+	p, err := New(wazuhCfg, &safeBuf{}) // wazuh creates it first, as in main.go
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.EnsureLogin(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	tok, err := p.TokenFor(context.Background(), indexerCfg.Token)
+	if err != nil || tok != "at-1" {
+		t.Errorf("indexer TokenFor(access_token) = %q, err %v; want at-1", tok, err)
+	}
+	idTok, err := p.TokenFor(context.Background(), "")
+	if err != nil || strings.Count(idTok, ".") != 2 {
+		t.Errorf("TokenFor(\"\") = %q, err %v; want an ID token", idTok, err)
 	}
 }
 

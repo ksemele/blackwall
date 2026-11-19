@@ -163,13 +163,13 @@ func run() error {
 		return fmt.Errorf("context %q has no wazuh: subsystem", cfg.Current)
 	}
 
-	// One auth.Provider per issuer+client_id pair across all contexts: a
-	// login covers every subsystem and context that shares the IdP. New
-	// providers start silent; interactive login is only ever performed
-	// here, before the TUI takes over the screen.
+	// One auth.Provider per distinct login (SessionKey): a login covers
+	// every subsystem and context that shares the IdP, client, scopes and
+	// TLS settings. New providers start silent; interactive login is only
+	// ever performed here, before the TUI takes over the screen.
 	providers := map[string]*auth.Provider{}
 	providerFor := func(a *config.Auth) (*auth.Provider, error) {
-		key := a.Issuer + "|" + a.ClientID
+		key := auth.SessionKey(*a)
 		if p, ok := providers[key]; ok {
 			return p, nil
 		}
@@ -202,7 +202,9 @@ func run() error {
 		if err != nil {
 			return nilSource, err
 		}
-		return p, nil
+		// The subsystem's own auth.token decides the kind it receives;
+		// sharing a provider must not override it.
+		return subsystemTokens{p: p, kind: sub.Auth.Token}, nil
 	}
 
 	// SSO login for the starting context happens now, in plain terminal
@@ -400,6 +402,17 @@ func run() error {
 		return err
 	}
 	return nil
+}
+
+// subsystemTokens adapts a shared auth.Provider to one subsystem's
+// indexer.TokenSource, honoring that subsystem's auth.token kind.
+type subsystemTokens struct {
+	p    *auth.Provider
+	kind string
+}
+
+func (t subsystemTokens) Token(ctx context.Context) (string, error) {
+	return t.p.TokenFor(ctx, t.kind)
 }
 
 // indexerAuth returns the indexer section's auth block, or nil when there
