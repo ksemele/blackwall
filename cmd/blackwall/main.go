@@ -191,7 +191,7 @@ func run() error {
 		if err != nil {
 			return nilClaims, err
 		}
-		return p, nil
+		return wazuhRunAs{provider: p, mappings: sub.Auth.RunAs}, nil
 	}
 	indexerTokens := func(sub *config.IndexerSubsystem) (indexer.TokenSource, error) {
 		var nilSource indexer.TokenSource
@@ -404,8 +404,21 @@ func run() error {
 	return nil
 }
 
+// wazuhRunAs sends the wazuh block's own run_as mappings through the
+// shared provider: subsystems that share one login must post their own
+// authorization context, not the one belonging to whichever block created
+// the provider.
+type wazuhRunAs struct {
+	provider *auth.Provider
+	mappings []config.RunAsClaim
+}
+
+func (w wazuhRunAs) RunAsContext(ctx context.Context) (map[string]any, error) {
+	return w.provider.RunAsContext(ctx, w.mappings)
+}
+
 // subsystemTokens adapts a shared auth.Provider to one subsystem's
-// indexer.TokenSource, honoring that subsystem's auth.token kind.
+// indexer.TokenSource, honoring that subsystem's auth.token setting.
 type subsystemTokens struct {
 	p    *auth.Provider
 	kind string

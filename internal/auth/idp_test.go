@@ -30,12 +30,14 @@ type fakeIDP struct {
 	clientID string
 	expires  int // expires_in served by the token endpoint
 
-	mu            sync.Mutex
-	pending       int // remaining authorization_pending answers (device grant)
-	issued        int // successful token responses
-	grants        []string
-	codeChallenge string
-	signEvil      bool
+	mu              sync.Mutex
+	pending         int // remaining authorization_pending answers (device grant)
+	issued          int // successful token responses
+	grants          []string
+	jwksHits        int  // GET /jwks count
+	omitIDOnRefresh bool // refresh grants answer without id_token
+	codeChallenge   string
+	signEvil        bool
 
 	key       jose.JSONWebKey
 	evilKey   jose.JSONWebKey
@@ -85,6 +87,9 @@ func newFakeIDP(t *testing.T, deviceEndpoint bool) *fakeIDP {
 		writeJSON(w, doc)
 	})
 	mux.HandleFunc("/jwks", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		f.jwksHits++
+		f.mu.Unlock()
 		writeJSON(w, jose.JSONWebKeySet{Keys: []jose.JSONWebKey{f.key.Public()}})
 	})
 	mux.HandleFunc("/device", func(w http.ResponseWriter, r *http.Request) {
@@ -128,6 +133,12 @@ func (f *fakeIDP) grantLog() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string(nil), f.grants...)
+}
+
+func (f *fakeIDP) jwksRequests() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.jwksHits
 }
 
 func (f *fakeIDP) challenge() string {
@@ -176,6 +187,10 @@ func (f *fakeIDP) handleToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		f.grants = append(f.grants, "refresh")
+		if f.omitIDOnRefresh {
+			f.writeTokenOpts(w, false)
+			return
+		}
 		f.writeToken(w)
 	case "authorization_code":
 		// Enforce PKCE: S256(code_verifier) must equal the stored challenge.
@@ -193,13 +208,23 @@ func (f *fakeIDP) handleToken(w http.ResponseWriter, r *http.Request) {
 
 func (f *fakeIDP) writeToken(w http.ResponseWriter) {
 	f.issued++
-	writeJSON(w, map[string]any{
+	f.writeTokenOpts(w, true)
+}
+
+// writeTokenOpts answers a token endpoint. withID=false omits the id_token,
+// mimicking IdPs (or lost openid scopes) that stop returning one on
+// refresh grants. Call with f.mu held, like handleToken.
+func (f *fakeIDP) writeTokenOpts(w http.ResponseWriter, withID bool) {
+	body := map[string]any{
 		"access_token":  fmt.Sprintf("at-%d", f.issued),
 		"token_type":    "Bearer",
 		"expires_in":    f.expires,
 		"refresh_token": fmt.Sprintf("rt-%d", f.issued),
-		"id_token":      f.idToken(time.Now()),
-	})
+	}
+	if withID {
+		body["id_token"] = f.idToken(time.Now())
+	}
+	writeJSON(w, body)
 }
 
 func (f *fakeIDP) idToken(now time.Time) string {

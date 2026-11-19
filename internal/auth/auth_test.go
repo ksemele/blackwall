@@ -84,7 +84,7 @@ func TestDeviceFlowLoginRefreshAndClaims(t *testing.T) {
 		t.Errorf("AccessToken = %q, want at-2", tok)
 	}
 
-	ctxMap, err := p.RunAsContext(context.Background())
+	ctxMap, err := p.RunAsContext(context.Background(), config.DefaultRunAsClaims)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestCachedSessionReusedByNewProvider(t *testing.T) {
 	// RunAsContext must reuse the ID token restored from the keyring
 	// (cachedSession stores it beside the oauth2 token) — no extra IdP
 	// grant.
-	ctxMap, err := p2.RunAsContext(context.Background())
+	ctxMap, err := p2.RunAsContext(context.Background(), config.DefaultRunAsClaims)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,16 +178,16 @@ func TestCachedSessionWithoutRefreshToken(t *testing.T) {
 	if err := p.EnsureLogin(context.Background()); err != nil {
 		t.Fatalf("EnsureLogin with a refresh-less cached session: %v", err)
 	}
-	ctxMap, err := p.RunAsContext(context.Background())
+	ctxMap, err := p.RunAsContext(context.Background(), config.DefaultRunAsClaims)
 	if err != nil {
 		t.Fatalf("RunAsContext with a refresh-less cached session: %v", err)
 	}
 	if !reflect.DeepEqual(ctxMap, map[string]any{"user_name": "alice-e1"}) {
 		t.Errorf("RunAsContext = %v", ctxMap)
 	}
-	tok, err := p.Token(context.Background())
+	tok, err := p.TokenFor(context.Background(), "") // "" = id_token kind
 	if err != nil || tok == "" || strings.Count(tok, ".") != 2 {
-		t.Errorf("Token = %q, err %v; want the cached ID token", tok, err)
+		t.Errorf("TokenFor = %q, err %v; want the cached ID token", tok, err)
 	}
 	if at, err := p.AccessToken(context.Background()); err != nil || at != "at-nr" {
 		t.Errorf("AccessToken = %q, err %v; want the cached at-nr", at, err)
@@ -220,7 +220,7 @@ func TestUnusableCachedSessionIsDropped(t *testing.T) {
 	if err := p.EnsureLogin(context.Background()); err != nil {
 		t.Fatal(err) // access token is still valid: no login at startup
 	}
-	if _, err := p.RunAsContext(context.Background()); err == nil ||
+	if _, err := p.RunAsContext(context.Background(), cfg.RunAs); err == nil ||
 		!strings.Contains(err.Error(), "restart blackwall to log in") {
 		t.Fatalf("RunAsContext err = %v; want the restart-to-login error", err)
 	}
@@ -361,7 +361,7 @@ func TestSilentProviderWithoutSession(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "no SSO session") {
 		t.Fatalf("AccessToken without session: %v", err)
 	}
-	if _, err := p.RunAsContext(context.Background()); err == nil {
+	if _, err := p.RunAsContext(context.Background(), config.DefaultRunAsClaims); err == nil {
 		t.Fatal("RunAsContext without session: want error")
 	}
 }
@@ -412,7 +412,7 @@ func TestForgedIDTokenRejected(t *testing.T) {
 	if err := p.EnsureLogin(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.RunAsContext(context.Background()); err == nil || !strings.Contains(err.Error(), "ID token rejected") {
+	if _, err := p.RunAsContext(context.Background(), config.DefaultRunAsClaims); err == nil || !strings.Contains(err.Error(), "ID token rejected") {
 		t.Fatalf("RunAsContext with forged token: %v", err)
 	}
 }
@@ -485,7 +485,7 @@ func TestIDTokenExpiryForcesRefresh(t *testing.T) {
 	if err := p.EnsureLogin(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	ctxMap, err := p.RunAsContext(context.Background())
+	ctxMap, err := p.RunAsContext(context.Background(), config.DefaultRunAsClaims)
 	if err != nil {
 		t.Fatalf("RunAsContext with a nearly-expired ID token: %v", err)
 	}
@@ -518,12 +518,12 @@ func TestIndexerTokenSelection(t *testing.T) {
 	if err := p.EnsureLogin(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	idTok, err := p.Token(context.Background())
+	idTok, err := p.TokenFor(context.Background(), cfg.Token)
 	if err != nil {
-		t.Fatalf("Token: %v", err)
+		t.Fatalf("TokenFor: %v", err)
 	}
 	if n := strings.Count(idTok, "."); n != 2 {
-		t.Errorf("Token() = %q..., want a verified ID token JWT (3 segments)", idTok)
+		t.Errorf("TokenFor = %q..., want a verified ID token JWT (3 segments)", idTok)
 	}
 
 	cfg.Token = "access_token"
@@ -534,7 +534,139 @@ func TestIndexerTokenSelection(t *testing.T) {
 	if err := p2.EnsureLogin(context.Background()); err != nil {
 		t.Fatalf("EnsureLogin with cached session: %v", err)
 	}
-	if tok, err := p2.Token(context.Background()); err != nil || tok != "at-1" {
-		t.Errorf("Token() with access_token = %q, %v; want the cached at-1", tok, err)
+	if tok, err := p2.TokenFor(context.Background(), cfg.Token); err != nil || tok != "at-1" {
+		t.Errorf("TokenFor with access_token = %q, %v; want the cached at-1", tok, err)
+	}
+}
+
+// Round-4 review, blocking 1 (repro R1): subsystems sharing one login
+// (same issuer+client_id+scopes => same SessionKey and same provider) must
+// send their OWN run_as authorization context — the wazuh block B's map
+// must not be built from block A's mappings.
+func TestRunAsMappingPerSubsystem(t *testing.T) {
+	keyring.MockInit()
+	idp := newFakeIDP(t, true)
+
+	blockA := testAuthCfg(idp.url(), idp.clientID)
+	blockA.RunAs = []config.RunAsClaim{{Name: "username", Claim: "preferred_username"}}
+	blockB := testAuthCfg(idp.url(), idp.clientID)
+	blockB.RunAs = []config.RunAsClaim{{Name: "user_name", Claim: "sub"}}
+	if SessionKey(blockA) != SessionKey(blockB) {
+		t.Fatalf("SessionKey differs for identical issuer/client: %q vs %q", SessionKey(blockA), SessionKey(blockB))
+	}
+
+	// The provider is created by blockA — its own cfg.RunAs is NOT what
+	// blockB's wazuh client must receive.
+	p, err := New(blockA, &safeBuf{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.EnsureLogin(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	ctxMap, err := p.RunAsContext(context.Background(), blockB.RunAs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(ctxMap, map[string]any{"user_name": "alice-e1"}) {
+		t.Errorf("blockB run_as context = %v, want {user_name: alice-e1} from blockB's own mapping", ctxMap)
+	}
+	ctxMap, err = p.RunAsContext(context.Background(), blockA.RunAs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(ctxMap, map[string]any{"username": "alice"}) {
+		t.Errorf("blockA run_as context = %v, want {username: alice}", ctxMap)
+	}
+}
+
+// Round-4 review, blocking 1 (repro R1b): an auth block without run_as
+// mappings (an indexer-style block) must produce an error, not the {} body
+// that logs the service user in with no RBAC identity.
+func TestEmptyRunAsMappingRejected(t *testing.T) {
+	keyring.MockInit()
+	idp := newFakeIDP(t, true)
+
+	cfg := testAuthCfg(idp.url(), idp.clientID)
+	cfg.RunAs = nil // indexer-style block: applyAuthDefaults never maps run_as here
+	p, err := New(cfg, &safeBuf{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.EnsureLogin(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	ctxMap, err := p.RunAsContext(context.Background(), nil)
+	if err == nil {
+		t.Fatalf("RunAsContext with no mappings = %v, want an error instead of %v", ctxMap, ctxMap)
+	}
+	if !strings.Contains(err.Error(), "run_as") {
+		t.Errorf("err = %v, want it to name the missing run_as mapping", err)
+	}
+}
+
+// Round-4 review, blocking 2 (repro R2): if a refresh grant answers without
+// an id_token, keeping the old (about-to-expire) ID token would keep the
+// app hammering refresh while JWKS rejects the stale token forever. The
+// session must be dropped from the keyring and the user get an error that
+// actually leads to a fresh login.
+func TestRefreshWithoutIDTokenDropsSession(t *testing.T) {
+	keyring.MockInit()
+	idp := newFakeIDP(t, true)
+	idp.idExpires = 2
+	idp.omitIDOnRefresh = true
+
+	cfg := testAuthCfg(idp.url(), idp.clientID)
+	p, err := New(cfg, &safeBuf{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.EnsureLogin(context.Background()); err != nil {
+		t.Fatalf("EnsureLogin (device grant carries id_token): %v", err)
+	}
+	time.Sleep(3 * time.Second) // ID token expired: next verification forces a refresh
+
+	_, err = p.RunAsContext(context.Background(), cfg.RunAs)
+	if err == nil || !strings.Contains(err.Error(), "id_token") {
+		t.Fatalf("RunAsContext after id_token-less refresh: %v; want the no-id_token restart error", err)
+	}
+	if _, err := keyring.Get(keyringService, p.cacheKey()); !errors.Is(err, keyring.ErrNotFound) {
+		t.Errorf("keyring after dead refresh: err = %v, want ErrNotFound (session dropped)", err)
+	}
+	if grants := idp.grantLog(); len(grants) < 2 || grants[len(grants)-1] != "refresh" {
+		t.Errorf("grantLog = %v, want the refresh grant to have been attempted", grants)
+	}
+}
+
+// Round-4 review, blocking 3 (repro R3): the OIDC verifier — and with it
+// the go-oidc remote key set — must be created once per provider, so the
+// JWKS is fetched on the first verification and served from cache
+// afterwards (re-fetched only when a token names an unknown kid).
+func TestJWKSCachedAcrossVerifications(t *testing.T) {
+	keyring.MockInit()
+	idp := newFakeIDP(t, true)
+
+	cfg := testAuthCfg(idp.url(), idp.clientID)
+	p, err := New(cfg, &safeBuf{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.EnsureLogin(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.TokenFor(context.Background(), ""); err != nil {
+		t.Fatal(err) // first verification: the one legitimate JWKS fetch
+	}
+
+	before := idp.jwksRequests()
+	for i := 0; i < 3; i++ {
+		if _, err := p.TokenFor(context.Background(), ""); err != nil {
+			t.Fatalf("TokenFor %d: %v", i, err)
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	if got := idp.jwksRequests() - before; got > 1 {
+		t.Errorf("JWKS requests across 3 verifications = %d, want at most 1 (RemoteKeySet must cache keys)", got)
 	}
 }

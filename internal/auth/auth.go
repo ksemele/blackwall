@@ -34,13 +34,15 @@ type Provider struct {
 
 	mu         sync.Mutex
 	httpc      *http.Client
-	idp        *oidc.Provider // filled by discover
-	oauth      *oauth2.Config // ditto
-	session    *oauth2.Token  // current or cached session
-	idToken    string         // the session's ID token; oauth2 extras do not survive the keyring round-trip, so it is kept explicitly
-	idTokenExp time.Time      // its exp claim (unverified read; verification happens before use)
-	loaded     bool           // cache consulted once
-	cache      tokenCache
+	oauth      *oauth2.Config        // filled by discoverLocked
+	session    *oauth2.Token         // current or cached session
+	idToken    string                // the session's ID token; oauth2 extras do not survive the keyring round-trip, so it is kept explicitly
+	idTokenExp time.Time             // its exp claim (unverified read; verification happens before use)
+	loaded     bool                  // cache consulted once
+	verifier   *oidc.IDTokenVerifier // built once by discoverLocked; its key
+	// set caches the IdP JWKS and refetches
+	// only on an unknown kid
+	cache tokenCache
 }
 
 // New builds a Provider for an auth block. Interactive login happens only
@@ -85,11 +87,6 @@ func (p *Provider) AccessToken(ctx context.Context) (string, error) {
 // default) never gets a context built from an already-expired token.
 const idTokenRefreshWindow = 30 * time.Second
 
-// Token returns the token for the provider's own auth block (see TokenFor).
-func (p *Provider) Token(ctx context.Context) (string, error) {
-	return p.TokenFor(ctx, p.cfg.Token)
-}
-
 // TokenFor returns the token a subsystem should send: "access_token" is
 // the opaque access token, anything else (including "") the ID token,
 // verified against the IdP (JWKS, issuer, audience, expiry) — the
@@ -106,16 +103,23 @@ func (p *Provider) TokenFor(ctx context.Context, kind string) (string, error) {
 }
 
 // RunAsContext verifies the session's ID token against the IdP (JWKS,
-// issuer, audience, expiry) and maps its claims through cfg.RunAs to the
-// Wazuh API authorization context: the JSON object the run_as endpoint
-// expects as its whole request body (nested objects and arrays allowed;
-// RBAC rules match it with MATCH/FIND).
-func (p *Provider) RunAsContext(ctx context.Context) (map[string]any, error) {
+// issuer, audience, expiry) and maps its claims through the calling
+// subsystem's run_as mappings to the Wazuh API authorization context: the
+// JSON object the run_as endpoint expects as its whole request body
+// (nested objects and arrays allowed; RBAC rules match it with MATCH/FIND).
+// The mappings come from the consuming auth block, not from whichever
+// block created this provider — subsystems sharing one login send their
+// own context. An empty mapping is refused: an empty body would mean an
+// API session with no identity at all.
+func (p *Provider) RunAsContext(ctx context.Context, mappings []config.RunAsClaim) (map[string]any, error) {
+	if len(mappings) == 0 {
+		return nil, fmt.Errorf("oidc: this wazuh block has no auth.run_as mapping: refusing a run_as session with no identity")
+	}
 	_, claims, err := p.verifiedIDToken(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return runAsContext(p.cfg.RunAs, claims)
+	return runAsContext(mappings, claims)
 }
 
 // verifiedIDToken returns the session's ID token (raw + verified claims),
@@ -147,21 +151,22 @@ func (p *Provider) verifiedIDToken(ctx context.Context) (string, map[string]any,
 		stale.Expiry = time.Now().Add(-time.Hour)
 		stale.ExpiresIn = 0
 		t, err := p.refreshLocked(ctx, &stale)
+		if err == nil {
+			err = p.setTokenLocked(t, true)
+		}
 		if err != nil {
 			p.mu.Unlock()
 			return "", nil, err
 		}
-		p.setTokenLocked(t)
 	}
-	idp, rawID := p.idp, p.idToken
+	rawID := p.idToken
 	p.mu.Unlock()
 
 	if rawID == "" {
 		return "", nil, fmt.Errorf("oidc: IdP returned no ID token (is the openid scope granted?)")
 	}
 
-	verifier := idp.VerifierContext(oidc.ClientContext(ctx, p.httpc), &oidc.Config{ClientID: p.cfg.ClientID})
-	idt, err := verifier.Verify(ctx, rawID)
+	idt, err := p.verifier.Verify(ctx, rawID)
 	if err != nil {
 		return "", nil, fmt.Errorf("oidc: ID token rejected: %w", err)
 	}
@@ -201,8 +206,15 @@ func (p *Provider) token(ctx context.Context, interactive bool) (*oauth2.Token, 
 	if p.session != nil && p.session.RefreshToken != "" {
 		t, err := p.refreshLocked(ctx, p.session)
 		if err == nil {
-			p.setTokenLocked(t)
-			return t, nil
+			if serr := p.setTokenLocked(t, true); serr == nil {
+				return t, nil
+			} else if interactive {
+				// The refresh grant was refused (e.g. it returned no
+				// id_token): fall through to a fresh interactive login.
+				err = serr
+			} else {
+				return nil, serr
+			}
 		}
 		if !interactive {
 			return nil, fmt.Errorf("SSO refresh failed (%v); restart blackwall to log in again", err)
@@ -218,17 +230,36 @@ func (p *Provider) token(ctx context.Context, interactive bool) (*oauth2.Token, 
 	if err != nil {
 		return nil, err
 	}
-	p.setTokenLocked(t)
+	if err := p.setTokenLocked(t, false); err != nil {
+		return nil, err
+	}
 	return t, nil
 }
 
-func (p *Provider) setTokenLocked(t *oauth2.Token) {
+// setTokenLocked stores t as the session and caches it together with its
+// ID token. refreshGrant tells which grant produced t: a refresh response
+// without an id_token means the IdP no longer renews the ID token (Keycloak
+// drops it when the openid scope went missing, other IdPs never return it
+// on a refresh grant), so the old token would expire unrecoverably and the
+// app would replay it until JWKS verification rejects it. The session is
+// then dropped from the keyring and the caller gets an error that makes
+// "restart to log in again" actually true.
+func (p *Provider) setTokenLocked(t *oauth2.Token, refreshGrant bool) error {
 	p.session = t
-	if id, _ := t.Extra("id_token").(string); id != "" {
+	id, _ := t.Extra("id_token").(string)
+	if id == "" && refreshGrant {
+		p.session, p.idToken, p.idTokenExp = nil, "", time.Time{}
+		p.cache.drop(p.cacheKey())
+		return fmt.Errorf("oidc: IdP did not return an id_token on refresh (openid scope lost?): restart blackwall to log in again")
+	}
+	if id != "" {
 		p.idToken = id
 		p.idTokenExp = claimExpiry(id)
+	} else {
+		p.idToken, p.idTokenExp = "", time.Time{}
 	}
 	p.cache.set(p.cacheKey(), t, p.idToken)
+	return nil
 }
 
 // claimExpiry reads the exp claim of a JWT without verifying it. The value
@@ -278,7 +309,12 @@ func (p *Provider) discoverLocked(ctx context.Context) error {
 	_ = idp.Claims(&meta)
 	ep := idp.Endpoint()
 	ep.DeviceAuthURL = meta.DeviceAuth
-	p.idp = idp
+	// One verifier for the provider's lifetime: its remote key set fetches
+	// the JWKS once and re-fetches only when a token names an unknown kid
+	// (go-oidc RemoteKeySet.keysFromCache/keysFromRemote). The IdP client
+	// from NewProvider above — our blackwall TLS client — is what the key
+	// set uses, so CA/insecure settings keep applying.
+	p.verifier = idp.Verifier(&oidc.Config{ClientID: p.cfg.ClientID})
 	p.oauth = &oauth2.Config{
 		ClientID: p.cfg.ClientID,
 		Endpoint: ep,

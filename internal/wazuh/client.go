@@ -94,6 +94,11 @@ func (c *Client) authenticateRunAs(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("authenticate run_as: %w", err)
 	}
+	if len(runAsCtx) == 0 {
+		// A context-less POST would log the service user in with no RBAC
+		// identity; refuse instead of sending {}.
+		return fmt.Errorf("authenticate run_as: the authorization context is empty; check auth.run_as mappings")
+	}
 	body, err := json.Marshal(runAsCtx)
 	if err != nil {
 		return err

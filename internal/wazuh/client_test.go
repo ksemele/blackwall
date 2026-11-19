@@ -164,3 +164,17 @@ func TestAuthenticate_RunAs401(t *testing.T) {
 		t.Errorf("err = %v, want run_as hint", err)
 	}
 }
+
+// An empty authorization context must never reach the API: a run_as POST
+// with body {} would log the service user in with no RBAC identity at all.
+func TestAuthenticate_RunAsEmptyContext(t *testing.T) {
+	srv := newServer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("no request expected, got %s %s", r.Method, r.URL.Path)
+	})
+	c, _ := New(subFromServer(srv, "svc", "svcpw"), stubClaims{ctxMap: map[string]any{}})
+	c.insecureScheme = "http"
+	err := c.Authenticate(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "context is empty") {
+		t.Errorf("err = %v, want the empty-context rejection", err)
+	}
+}
