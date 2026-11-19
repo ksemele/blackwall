@@ -58,39 +58,63 @@ func (v *View) View() string { return v.pg.Render(v.text()) }
 func (v *View) text() string {
 	var b strings.Builder
 
-	b.WriteString(styles.HelpHeading.Render("Help") + "\n\n")
+	b.WriteString(styles.HelpHeading.Render("Help") + "\n")
+	b.WriteString(styles.Dim.Render("This screen: ESC closes it, q or Ctrl+C quit; the keys below act on the views.") + "\n\n")
 
 	b.WriteString(styles.HelpHeading.Render("Global") + "\n")
 	b.WriteString(row("?", "Show this help"))
-	b.WriteString(row("q", "Quit"))
-	b.WriteString(row("1", "Contexts view"))
-	b.WriteString(row("2", "Agents view"))
-	b.WriteString(row("tab / shift+tab", "Cycle views"))
+	b.WriteString(row("q / Ctrl+C", "Quit"))
+	b.WriteString(row("1-9", "Jump to a view: 1 Contexts, 2 Agents, 3 Alerts"))
+	b.WriteString(row("Tab / Shift+Tab", "Next / previous view"))
 	b.WriteString(row("ESC", "Back"))
-	b.WriteString(row(":", "Open command palette"))
-	b.WriteString("\n")
-
-	b.WriteString(styles.HelpHeading.Render("Agents") + "\n")
-	b.WriteString(row("↑ / ↓  (or k/j)", "Navigate"))
-	b.WriteString(row("PgUp / PgDn, g / G", "Half page, top / bottom"))
-	b.WriteString(row("↵", "Details"))
-	b.WriteString(row("p", "Pause / resume refresh"))
-	b.WriteString(row("ctrl+r", "Force refresh"))
-	b.WriteString(row("/", "Filter  (↵ apply, ESC clear)"))
-	b.WriteString("\n")
-
-	b.WriteString(styles.HelpHeading.Render("Agent detail") + "\n")
-	b.WriteString(row("← / →", "Previous / next tab (wraps around)"))
-	b.WriteString(row("↑ / ↓  (or j), g / G", "Scroll a long tab"))
-	b.WriteString(row("ESC", "Back to list"))
-	b.WriteString(row("r", "Refresh"))
+	b.WriteString(row(":", "Open the command palette"))
+	b.WriteString(cont(":agents, :contexts, :alerts, :ctx <name>, :q"))
+	b.WriteString(row("p", "Pause / resume auto-refresh"))
+	b.WriteString(row("Ctrl+R", "Force refresh now (also retries a down ssh tunnel)"))
 	b.WriteString("\n")
 
 	b.WriteString(styles.HelpHeading.Render("Contexts") + "\n")
 	b.WriteString(row("↑ / ↓  (or k/j)", "Navigate"))
 	b.WriteString(row("↵", "Switch context"))
-	b.WriteString(row("ctrl+r", "Re-check availability"))
+	b.WriteString(row("Ctrl+R", "Re-check availability"))
 	b.WriteString(row("ESC", "Back"))
+	b.WriteString("\n")
+
+	b.WriteString(styles.HelpHeading.Render("Agents list") + "\n")
+	b.WriteString(row("↑ / ↓  (or k/j)", "Navigate"))
+	b.WriteString(row("PgUp / PgDn, Ctrl+U/D", "Half page up / down"))
+	b.WriteString(row("g / G", "First / last agent"))
+	b.WriteString(row("↵", "Open the agent's detail"))
+	b.WriteString(row("p", "Pause / resume refresh"))
+	b.WriteString(row("Ctrl+R", "Force refresh"))
+	b.WriteString(row("/", "Filter  (↵ apply, ESC clear)"))
+	b.WriteString(cont("while typing, q, digits and p go into the prompt"))
+	b.WriteString("\n")
+
+	b.WriteString(styles.HelpHeading.Render("Agent detail") + "\n")
+	b.WriteString(row("← / →", "Previous / next tab (wraps around)"))
+	b.WriteString(row("o / h / t / k", "Overview / Hardware / Top / Packages"))
+	b.WriteString(row("n / s / e", "Network / Security / Sessions"))
+	b.WriteString(row("l", "Jump to :alerts filtered to this agent"))
+	b.WriteString(row("/", "Filter Top / Packages  (↵ apply, ESC clear)"))
+	b.WriteString(cont("while typing, q, digits and p go into the prompt"))
+	b.WriteString(row("↑↓/j, Ctrl+U/D, g/G", "Scroll a long tab (k is the Packages tab)"))
+	b.WriteString(row("r", "Refresh (also retries a down ssh tunnel)"))
+	b.WriteString(row("ESC", "Back to the list"))
+	b.WriteString("\n")
+
+	b.WriteString(styles.HelpHeading.Render("Alerts") + "\n")
+	b.WriteString(row("↑ / ↓  (or k/j)", "Move"))
+	b.WriteString(row("↵", "Open the alert card"))
+	b.WriteString(cont("rule, MITRE, agent, data, full log, compliance"))
+	b.WriteString(row("j/k, g/G", "Scroll the card; ESC closes it"))
+	b.WriteString(row("+ / -", "Minimum level up / down (0-15), re-queries"))
+	b.WriteString(row("s", "Toggle the exclude_groups filter, re-queries"))
+	b.WriteString(row("a", "Cycle the agent filter (agents in the feed, then all)"))
+	b.WriteString(row("/", "Filter loaded rows  (↵ apply, ESC clear)"))
+	b.WriteString(cont("while typing, q, digits and p go into the prompt"))
+	b.WriteString(row("p", "Pause / resume auto-refresh"))
+	b.WriteString(row("Ctrl+R", "Refresh now"))
 
 	return b.String()
 }
@@ -98,4 +122,10 @@ func (v *View) text() string {
 // row formats a single help entry as "  key            description\n".
 func row(key, desc string) string {
 	return fmt.Sprintf("  %-22s  %s\n", key, desc)
+}
+
+// cont continues the description of the row above it, so a long entry stays
+// inside 80 columns instead of being truncated by the pager.
+func cont(desc string) string {
+	return fmt.Sprintf("  %-22s  %s\n", "", desc)
 }

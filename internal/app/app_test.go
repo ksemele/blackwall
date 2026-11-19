@@ -192,6 +192,31 @@ func TestApp_CtrlCQuitsEvenWhileCapturing(t *testing.T) {
 	}
 }
 
+func TestApp_CtrlCQuitsWhileHelpIsOpen(t *testing.T) {
+	m := New(Deps{
+		Views:       []views.View{&fakeView{name: ":a"}},
+		InitialView: ":a",
+		HelpView:    &fakeView{name: ":help"},
+	})
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}}) // open the overlay
+	if m.Active().Name() != ":help" {
+		t.Fatalf("active = %q, want :help", m.Active().Name())
+	}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if !isQuit(cmd) {
+		t.Fatal("ctrl+c must quit while the help overlay is open")
+	}
+}
+
+func TestApp_CtrlCQuitsWhilePaletteIsOpen(t *testing.T) {
+	m := New(Deps{Views: []views.View{&fakeView{name: ":a"}}, InitialView: ":a"})
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}}) // open the prompt
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if !isQuit(cmd) {
+		t.Fatal("ctrl+c must quit while the palette prompt is open")
+	}
+}
+
 func TestApp_PReachesViewWithoutPauseHook(t *testing.T) {
 	a := &fakeView{name: ":a"}
 	m := New(Deps{Views: []views.View{a}, InitialView: ":a"})

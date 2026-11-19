@@ -131,6 +131,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Checked first: Ctrl+C has to quit even while the palette prompt or
+		// the help overlay owns the keyboard (see views.KeyCapturer).
+		if msg.String() == "ctrl+c" {
+			return m, tea.Quit
+		}
 		if m.paletteOpen {
 			switch msg.String() {
 			case "esc":
@@ -178,9 +183,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
-		if msg.String() == "ctrl+c" {
-			return m, tea.Quit
-		}
 		if kc, ok := m.Active().(views.KeyCapturer); ok && kc.CapturesKeys() {
 			next, cmd := m.Active().Update(msg)
 			if v, ok := next.(views.View); ok {
