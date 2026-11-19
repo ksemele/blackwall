@@ -421,7 +421,9 @@ an OSC 52 escape sequence — no external binaries, and it works through SSH as
 long as the terminal supports OSC 52: iTerm2, kitty, WezTerm, ghostty and
 Windows Terminal do; xterm needs `allowWindowOps`; Terminal.app ignores OSC 52.
 Under tmux it only reaches the clipboard with `set -g set-clipboard on` in
-`~/.tmux.conf`. The copied text is control-character-cleaned (the same form the
+`~/.tmux.conf`, and older tmux (3.4/3.5) silently truncates the payload at its
+`osc52-limit` option — check `tmux show-options -g osc52-limit` if pasted text
+looks cut. The copied text is control-character-cleaned (the same form the
 card shows) and logs above 16 KiB are copied truncated, because terminals cap
 OSC sequence length; the status line reports what was copied.
 

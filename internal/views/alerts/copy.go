@@ -14,14 +14,17 @@ import (
 
 // maxCopyBytes is the cap on the text `y` copies to the clipboard. OSC 52
 // payloads travel as base64 (≈4/3 the size of the text) inside a single
-// escape sequence, and terminals cap OSC sequence length (tmux: the
-// `osc52-limit` option; older terminals are stricter). 16 KiB of text is
-// ~22 KiB on the wire — safely below the strictest caps. Logs above the cap
-// are copied truncated and the status line says so.
+// escape sequence, and terminals cap OSC sequence length; 16 KiB of text
+// (~22 KiB on the wire) stays below GUI-terminal caps. Note that older tmux
+// (3.4/3.5) additionally truncates OSC 52 payloads at its `osc52-limit`
+// option, so there the pasted text can end up shorter than this cap — the
+// status line reports what blackwall sent. Logs above the cap are copied
+// truncated and the status line says so.
 const maxCopyBytes = 16 * 1024
 
 // truncateForCopy cuts s to at most limit bytes, never splitting a UTF-8
-// rune, and reports whether the cut happened.
+// rune, and reports whether the cut happened. s must be valid UTF-8 (callers
+// pass safe.Block output); the backward scan is unguarded for invalid input.
 func truncateForCopy(s string, limit int) (string, bool) {
 	if len(s) <= limit {
 		return s, false
