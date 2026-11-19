@@ -426,6 +426,13 @@ func TestAuth_ValidateRules(t *testing.T) {
 			"",
 		},
 		{
+			"indexer auth without server",
+			Config{Current: "x", Contexts: map[string]Context{"x": {Indexer: &IndexerSubsystem{
+				Auth: &Auth{Type: "oidc", Issuer: "https://sso.example.com", ClientID: "c"},
+			}}}},
+			"server and port are required",
+		},
+		{
 			"unsupported type",
 			Config{Current: "x", Contexts: map[string]Context{"x": {Wazuh: func() *WazuhSubsystem {
 				w := baseWazuh()

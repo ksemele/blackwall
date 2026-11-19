@@ -225,6 +225,9 @@ func Validate(cfg Config) error {
 		}
 		if x := ctx.Indexer; x != nil {
 			if x.Auth != nil {
+				if x.Server == "" || x.Port == 0 {
+					return fmt.Errorf("contexts.%s.indexer: server and port are required", name)
+				}
 				if x.User != "" || x.Password != "" {
 					return fmt.Errorf(
 						"contexts.%s.indexer: user/password must be absent when auth is set", name,
