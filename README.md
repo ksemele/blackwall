@@ -192,7 +192,7 @@ inside `wazuh:` and/or `indexer:`:
     wazuh:
       server:   127.0.0.1
       port:     55000
-      user:     svc-blackwall        # API user with allow_run_as: true
+      user:     svc-blackwall        # API user with allow_run_as enabled
       password: ${BW_SSO_WAZUH_SVC_PASSWORD}
       auth:
         type:     oidc
@@ -217,23 +217,34 @@ inside `wazuh:` and/or `indexer:`:
 - `blackwall` is a public client: no client secret in the config.
 - For the indexer the `auth` block replaces `user`/`password` (they are
   rejected together at config validation) and search requests carry
-  `Authorization: Bearer <access token>`. The indexer must be configured
+  `Authorization: Bearer <token>`. `auth.token` selects the token:
+  `id_token` (default) or `access_token`. The indexer must be configured
   to accept JWTs from the same issuer — in Wazuh 4.x that is the
-  `jwt_auth_domain` in the indexer security config.
+  `jwt_auth_domain` in the indexer security config, which validates the
+  token against the IdP JWKS with `audience = client_id`, so the ID token
+  is what works out of the box; some IdPs (Entra ID) never issue ID
+  tokens OpenSearch accepts and need `access_token` plus a security domain
+  built for them.
 - For the Wazuh API a password stays in the config: the API (4.x) has no
-  SSO. `user`/`password` must be a service user with `allow_run_as: true`
-  in `api.yaml`, and the signed-in person's identity is attached per
-  request via `POST /security/user/authenticate/run_as`. Which ID-token
-  claims become the run_as context is configured with `run_as`:
+  SSO. `user`/`password` authenticate a service user whose `allow_run_as`
+  flag is enabled (`PUT /security/users/<user_id>/run_as?allow_run_as=true`;
+  the flag is off by default and is not an `api.yaml` setting), and the
+  signed-in person's identity is attached per request via
+  `POST /security/user/authenticate/run_as` — the request body *is* the
+  authorization context JSON object built from ID-token claims:
 
   ```yaml
         run_as:                          # default when omitted:
-          - name:  user_name             #   - name: user_name
+          - name:  username              #   - name: user_name
             claim: preferred_username    #     claim: sub
   ```
 
-  `name` is the `auth_context` key configured in `api.yaml`; mapped
-  claims must be plain strings/numbers. Default maps the token's `sub`.
+  Each entry maps one ID-token claim into the context; the value goes in
+  as-is — strings, numbers, arrays (a `groups`/`roles` claim maps to a
+  JSON array). Roles are granted by RBAC rules matching the context, e.g.
+  `{"FIND": {"username": "alice"}}` matches the context above. Keycloak's
+  `sub` is an opaque UUID — `preferred_username` is what the RBAC rules
+  usually match on. Default maps `sub` to `user_name`.
 
 **How the login works.** On startup, before the TUI opens: if the IdP
 publishes a device-authorization endpoint (Keycloak does) blackwall prints
@@ -241,9 +252,11 @@ publishes a device-authorization endpoint (Keycloak does) blackwall prints
 prints a login URL (authorization-code flow with PKCE) that redirects
 back to a temporary `127.0.0.1` listener. The session (access + refresh
 tokens) is cached in the OS keyring under the service name `blackwall`,
-so later runs log in silently; access tokens are refreshed automatically.
-If the keyring is unavailable blackwall says so and keeps the session in
-memory for that run only — nothing is written to disk.
+so later runs log in silently; tokens are refreshed automatically — an
+ID token nearing its expiry triggers a refresh even while the access
+token is still valid, because the manager API re-authenticates every ~15
+minutes. If the keyring is unavailable blackwall says so and keeps the
+session in memory for that run only — nothing is written to disk.
 
 **Caveats.**
 
@@ -255,6 +268,9 @@ memory for that run only — nothing is written to disk.
 - Interactive login happens once at startup. Switching to a context whose
   SSO session is missing or expired asks you to re-run blackwall.
 - If a refresh token itself expires, re-run blackwall to log in again.
+  Google ignores the `offline_access` scope: there the client must ask
+  `access_type=offline` at the authorization endpoint, so Google logins
+  may not yield a refresh token and will re-login on each run.
 - SAML-only IdPs are not supported; the IdP must expose OpenID Connect.
 
 ## Connecting to a manager

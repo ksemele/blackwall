@@ -22,8 +22,10 @@ So blackwall splits the problem the way the dashboard does:
   domain), end to end.
 - **Identity to the manager is asserted via run_as.** A service user with
   `allow_run_as` authenticates the API session; the analyst's ID-token
-  claims are mapped to the `auth_context` (`user_name←sub` by default)
-  so RBAC and the manager's audit log show the real person. Whoever
+  claims are mapped into the authorization context object that *is* the
+  run_as request body (`user_name←sub` by default); RBAC roles are
+  granted by rules matching that context (`{"FIND": {"username": "alice"}}`
+  style). Whoever
   holds the service user's password can claim any context — the identity
   is asserted, not proven. That is a property of Wazuh 4.x, not of this
   client, and the README states it.
@@ -39,7 +41,8 @@ no password at all.
 
 Not settled by this repo: this server has no 5.x lab, and the claim was
 not verified. What landed here follows the 4.x API surface (the endpoints
-and `api.yaml` knobs above). Verification on a 5.x manager is a lab item
+and security settings described in the README). Verification on a 5.x
+manager is a lab item
 (see checklist); if 5.x gained a JWT-based API auth path, the natural
 change would be to drop the service-user requirement in
 `internal/wazuh` and send the IdP token directly.
@@ -47,16 +50,20 @@ change would be to drop the service-user requirement in
 ## What landed in the code
 
 - `internal/config`: `auth` block on `wazuh`/`indexer` (type, issuer,
-  client_id, scopes, tls, run_as), env-expanded, validated (indexer:
+  client_id, scopes, tls, token, run_as), env-expanded, validated (indexer:
   auth replaces user/password; wazuh: still requires them).
 - `internal/auth`: discovery via go-oidc; device authorization grant
   (RFC 8628) when published, otherwise authorization code + PKCE with a
-  127.0.0.1 loopback redirect; automatic refresh; session (access +
-  refresh + ID token) cached in the OS keyring (`zalando/go-keyring`,
-  service `blackwall`), in-memory only when the keyring is unavailable.
+  127.0.0.1 loopback redirect; automatic refresh — an ID token expiring
+  within 30s is refreshed even while the access token is valid; session
+  (access + refresh + ID token) cached in the OS keyring
+  (`zalando/go-keyring`, service `blackwall`), in-memory only when the
+  keyring is unavailable.
   Public client: no client secret anywhere.
-- `internal/indexer`: bearer access tokens instead of Basic.
-- `internal/wazuh`: run_as with the claim-mapped context.
+- `internal/indexer`: bearer tokens instead of Basic; `auth.token` picks
+  ID token (default) or access token.
+- `internal/wazuh`: run_as posting the claim-mapped authorization context
+  object as the whole request body.
 - `cmd/blackwall`: one interactive login per issuer+client_id at startup
   (before the TUI); mid-run context switches use the cached/silent
   session and ask for a re-run when it is missing.
@@ -70,12 +77,18 @@ ksemele/blackwall-stack; no such lab exists on this server):
    standard flows + **device authorization grant enabled**, redirect URI
    `http://127.0.0.1:*` (loopback port is random).
 2. Indexer: enable `jwt_auth_domain` in the indexer security config
-   (issuer = realm URL, JWKS endpoint, claim → backend role).
-3. Wazuh API: `api.yaml` — `auth_context` mapping (e.g. `user_name` from
-   the run_as context) and a service user with `allow_run_as: true`.
+   (issuer = realm URL, JWKS endpoint, claim → backend role); it validates
+   the ID token with `audience = client_id` (that is the default
+   `auth.token`).
+3. Wazuh API: service user for the config; enable its run_as flag with
+   `PUT /security/users/<user_id>/run_as?allow_run_as=true` (off by
+   default, not an `api.yaml` setting) and grant roles through RBAC rules
+   matching the mapped claims, e.g. `{"FIND": {"username": "alice"}}` for
+   `run_as: [{name: username, claim: preferred_username}]`.
 4. TUI: `blackwall --context lab` — device code printed, then `:alerts`
    renders index hits (bearer), agents view renders with run_as; the
-   manager audit log shows `user_name=<keycloak subject>`.
+   manager audit log shows the run_as context (`username=<keycloak
+   username>`).
 5. Re-run: silent login from the keyring; expire the IdP session and
    confirm refresh; kill the keyring and confirm the in-memory warning.
 6. Repeat 2–4 on a 5.x manager to answer the 5.x question.
