@@ -3,6 +3,11 @@
 A Bubbletea TUI, layered as:
 
 - `internal/config`  — YAML + defaults + env expansion + CLI overrides.
+- `internal/auth`    — SSO (OIDC) sessions per issuer+client_id: discovery, device
+                       and PKCE loopback login, refresh, OS-keyring cache. Provides
+                       bearer tokens to `internal/indexer` and run_as claim contexts
+                       to `internal/wazuh`; interactive login runs only at startup
+                       in `cmd/blackwall`.
 - `internal/wazuh`   — Wazuh Manager API client (JWT auth, TLS-aware).
 - `internal/httpclient` — shared TLS-aware HTTP client.
 - `internal/indexer` — Wazuh indexer (OpenSearch) alert search.

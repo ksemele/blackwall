@@ -181,6 +181,109 @@ Wazuh indexer (OpenSearch). Contexts without it simply have no alerts feed.
 `alerts` is optional: an omitted `min_level` means 5, and an omitted
 `exclude_groups` means `[sca, blackwall_sessions]`. An explicit `0` or `[]` is kept.
 
+### SSO (OIDC) login
+
+Instead of a raw password, a context can authenticate against an OIDC
+identity provider (Keycloak, Authentik, …). An optional `auth:` block goes
+inside `wazuh:` and/or `indexer:`:
+
+```yaml
+  lab:
+    wazuh:
+      server:   127.0.0.1
+      port:     55000
+      user:     svc-blackwall        # API user with allow_run_as enabled
+      password: ${BW_SSO_WAZUH_SVC_PASSWORD}
+      auth:
+        type:     oidc
+        issuer:   https://sso.example.com/realms/lab
+        client_id: blackwall
+        tls:
+          insecure_skip_verify: true # lab IdP with a self-signed cert
+    indexer:
+      server:   127.0.0.1
+      port:     9200
+      auth:                          # replaces user/password entirely
+        type:     oidc
+        issuer:   https://sso.example.com/realms/lab
+        client_id: blackwall
+        tls:
+          insecure_skip_verify: true
+```
+
+- `type` is `oidc` (the only supported type today). `issuer` and
+  `client_id` are required; endpoints and keys come from the provider's
+  discovery document. `scopes` default to `[openid, offline_access]`.
+- `blackwall` is a public client: no client secret in the config.
+- For the indexer the `auth` block replaces `user`/`password` (they are
+  rejected together at config validation) and search requests carry
+  `Authorization: Bearer <token>`. `auth.token` selects the token:
+  `id_token` (default) or `access_token`. The indexer's OpenSearch
+  Security plugin must run a domain that accepts that token:
+  `openid_auth_domain` (`type: openid`) validates it against the IdP's
+  JWKS — `openid_connect_url` points at the IdP discovery document,
+  `subject_key`/`roles_key` map the claims (OpenSearch docs
+  `_security/authentication-backends/openid-connect.md`); `jwt_auth_domain`
+  (`type: jwt`) instead verifies the signature with a static `signing_key`
+  (HMAC secret or the IdP public key), with `required_audience` and
+  `required_issuer` as optional extra checks (`.../jwt.md`). Which claims
+  your IdP's token must satisfy at the indexer (audience, issuer) is lab
+  verification, not documented behavior; Wazuh's own SSO pages configure a
+  dashboard login (`saml_auth_domain` with an `exchange_key`) and say
+  nothing about API tokens. Some IdPs (Entra ID) never issue ID tokens
+  OpenSearch accepts and need `access_token` plus a security domain built
+  for them.
+- For the Wazuh API a password stays in the config: the API (4.x) has no
+  SSO. `user`/`password` authenticate a service user whose `allow_run_as`
+  flag is enabled (`PUT /security/users/<user_id>/run_as?allow_run_as=true`;
+  the flag is off by default and is not an `api.yaml` setting), and the
+  signed-in person's identity is attached per request via
+  `POST /security/user/authenticate/run_as` — the request body *is* the
+  authorization context JSON object built from ID-token claims:
+
+  ```yaml
+        run_as:                          # default when omitted:
+          - name:  username              #   - name: user_name
+            claim: preferred_username    #     claim: sub
+  ```
+
+  Each entry maps one ID-token claim into the context; the value goes in
+  as-is — strings, numbers, arrays (a `groups`/`roles` claim maps to a
+  JSON array). Roles are granted by RBAC rules matching the context, e.g.
+  `{"FIND": {"username": "alice"}}` matches the context above. Keycloak's
+  `sub` is an opaque UUID — `preferred_username` is what the RBAC rules
+  usually match on. Default maps `sub` to `user_name`.
+
+**How the login works.** On startup, before the TUI opens: if the IdP
+publishes a device-authorization endpoint (whether a given IdP does is a
+lab check; the README's Keycloak setup assumes it) blackwall prints
+`open <url> and enter the code XXXX-XXXX` — works over ssh. Otherwise it
+prints a login URL (authorization-code flow with PKCE) that redirects
+back to a temporary `127.0.0.1` listener. The session (access + refresh +
+ID tokens) is cached in the OS keyring under the service name `blackwall`,
+so later runs log in silently; tokens are refreshed automatically — an
+ID token nearing its expiry triggers a refresh even while the access
+token is still valid, because the manager API re-authenticates every ~15
+minutes. If the keyring is unavailable blackwall says so and keeps the
+session in memory for that run only — nothing is written to disk.
+
+**Caveats.**
+
+- The `run_as` identity is *asserted from your SSO session, not proven to
+  the manager*: anyone holding the service user's password can claim any
+  context. The SSO login authenticates you to blackwall; the manager
+  trusts the service user. Wazuh 4.x has no per-user API authentication;
+  audit attribution comes from the run_as context.
+- Interactive login happens once at startup. Switching to a context whose
+  SSO session is missing or expired asks you to re-run blackwall.
+- If a refresh token itself expires, re-run blackwall to log in again.
+  Google ignores the `offline_access` scope: the client must ask
+  `access_type=offline` at the authorization endpoint, so Google logins
+  may not yield a refresh token — such a session still works from the
+  keyring until its ID token expires, then blackwall drops it and asks
+  you to restart and log in again.
+- SAML-only IdPs are not supported; the IdP must expose OpenID Connect.
+
 ## Connecting to a manager
 
 The TUI talks to one manager per context: the Wazuh API (55000) and, optionally,

@@ -25,7 +25,7 @@ func TestGetRootcheckLastScan_OK(t *testing.T) {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	scan, err := c.GetRootcheckLastScan(context.Background(), "001")
@@ -46,7 +46,7 @@ func TestGetRootcheckLastScan_NonOK(t *testing.T) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	if _, err := c.GetRootcheckLastScan(context.Background(), "001"); err == nil {
@@ -76,7 +76,7 @@ func TestListRootcheckFindings_OK(t *testing.T) {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	findings, err := c.ListRootcheckFindings(context.Background(), "001")
@@ -97,7 +97,7 @@ func TestListRootcheckFindings_NonOK(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	if _, err := c.ListRootcheckFindings(context.Background(), "001"); err == nil {

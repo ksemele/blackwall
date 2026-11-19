@@ -3,6 +3,7 @@ package indexer
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -22,7 +23,7 @@ func serve(t *testing.T, h http.HandlerFunc) *Client {
 	t.Cleanup(srv.Close)
 	host, port, _ := net.SplitHostPort(strings.TrimPrefix(srv.URL, "http://"))
 	p, _ := strconv.Atoi(port)
-	c, err := New(config.IndexerSubsystem{Server: host, Port: p, User: "admin", Password: "pw"})
+	c, err := New(config.IndexerSubsystem{Server: host, Port: p, User: "admin", Password: "pw"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,8 +106,53 @@ func TestSearchAlerts_Unauthorized(t *testing.T) {
 }
 
 func TestClient_Addr(t *testing.T) {
-	c, _ := New(config.IndexerSubsystem{Server: "127.0.0.1", Port: 9200})
+	c, _ := New(config.IndexerSubsystem{Server: "127.0.0.1", Port: 9200}, nil)
 	if c.Addr() != "127.0.0.1:9200" {
 		t.Errorf("Addr = %q", c.Addr())
+	}
+}
+
+type stubTokens struct{ err error }
+
+func (s stubTokens) Token(context.Context) (string, error) {
+	if s.err != nil {
+		return "", s.err
+	}
+	return "tok-1", nil
+}
+
+// With an OIDC auth block the client sends a bearer token, never basic.
+func TestSearchAlerts_BearerAuth(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got, want := r.Header.Get("Authorization"), "Bearer tok-1"; got != want {
+			t.Errorf("Authorization = %q, want %q", got, want)
+		}
+		if _, _, ok := r.BasicAuth(); ok {
+			t.Error("basic auth sent alongside bearer token")
+		}
+		_, _ = w.Write(fixture(t, "search_alerts.json"))
+	}))
+	t.Cleanup(srv.Close)
+	host, port, _ := net.SplitHostPort(strings.TrimPrefix(srv.URL, "http://"))
+	p, _ := strconv.Atoi(port)
+
+	c, err := New(config.IndexerSubsystem{Server: host, Port: p}, stubTokens{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.scheme = "http"
+	if _, err := c.SearchAlerts(context.Background(), AlertQuery{MinLevel: 5}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A failing token source (expired SSO session) surfaces as a search error.
+func TestSearchAlerts_TokenSourceError(t *testing.T) {
+	c, err := New(config.IndexerSubsystem{Server: "127.0.0.1", Port: 1}, stubTokens{err: fmt.Errorf("no SSO session")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.SearchAlerts(context.Background(), AlertQuery{}); err == nil || !strings.Contains(err.Error(), "no SSO session") {
+		t.Errorf("err = %v", err)
 	}
 }

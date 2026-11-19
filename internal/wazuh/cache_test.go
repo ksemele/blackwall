@@ -27,7 +27,7 @@ func TestCacheHit(t *testing.T) {
 		}
 	})
 
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	hw1, err := c.GetHardware(context.Background(), "001")
@@ -65,7 +65,7 @@ func TestCacheTTLExpiry(t *testing.T) {
 		}
 	})
 
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	// Populate cache.
@@ -108,7 +108,7 @@ func TestCacheMissOnError(t *testing.T) {
 		}
 	})
 
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	_, err1 := c.GetHardware(context.Background(), "001")
@@ -147,7 +147,7 @@ func TestCacheKeyIsolation(t *testing.T) {
 		}
 	})
 
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	hw1, err := c.GetHardware(context.Background(), "001")
@@ -188,7 +188,7 @@ func TestInvalidateCache(t *testing.T) {
 		}
 	})
 
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	if _, err := c.GetHardware(context.Background(), "001"); err != nil {

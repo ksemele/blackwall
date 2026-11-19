@@ -1,6 +1,7 @@
 package wazuh
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,7 +19,8 @@ type Client struct {
 	user           string
 	password       string
 	httpClient     *http.Client
-	insecureScheme string // test override; production stays "https"
+	insecureScheme string      // test override; production stays "https"
+	claims         RunAsClaims // set when wazuh auth is OIDC; nil → plain authenticate
 
 	mu       sync.Mutex
 	token    string
@@ -27,8 +29,19 @@ type Client struct {
 	clientCache
 }
 
-// New constructs a Client for the given Wazuh subsystem.
-func New(sub config.WazuhSubsystem) (*Client, error) {
+// RunAsClaims supplies the authorization context (a JSON object built from
+// SSO ID-token claims, see internal/auth) posted as the whole body of
+// POST /security/user/authenticate/run_as — the Wazuh API's authorization
+// context format (api/api/spec/spec.yaml). RBAC rules match the object
+// with MATCH/FIND. The user/password still authenticate the run_as-capable
+// service user: the manager API has no SSO of its own.
+type RunAsClaims interface {
+	RunAsContext(ctx context.Context) (map[string]any, error)
+}
+
+// New constructs a Client for the given Wazuh subsystem. claims must be
+// non-nil exactly when sub.Auth is set (config.Validate enforces the pair).
+func New(sub config.WazuhSubsystem, claims RunAsClaims) (*Client, error) {
 	httpc, err := buildHTTPClient(sub.TLS)
 	if err != nil {
 		return nil, err
@@ -40,6 +53,7 @@ func New(sub config.WazuhSubsystem) (*Client, error) {
 		password:       sub.Password,
 		httpClient:     httpc,
 		insecureScheme: "https",
+		claims:         claims,
 		clientCache:    clientCache{cache: make(map[string]cacheEntry)},
 	}, nil
 }
@@ -49,6 +63,9 @@ func (c *Client) baseURL() string {
 }
 
 func (c *Client) Authenticate(ctx context.Context) error {
+	if c.claims != nil {
+		return c.authenticateRunAs(ctx)
+	}
 	url := c.baseURL() + "/security/user/authenticate"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 	if err != nil {
@@ -64,6 +81,48 @@ func (c *Client) Authenticate(ctx context.Context) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("authenticate: HTTP %d", resp.StatusCode)
 	}
+	return c.storeToken(resp)
+}
+
+// authenticateRunAs authenticates the service user (Basic) and posts the
+// SSO claims as the authorization context object — the Wazuh API's only
+// non-password identity path (spec.yaml: /security/user/authenticate/run_as
+// takes the context as its whole body; roles come from RBAC rules matching
+// it). The API logs then name the real person.
+func (c *Client) authenticateRunAs(ctx context.Context) error {
+	runAsCtx, err := c.claims.RunAsContext(ctx)
+	if err != nil {
+		return fmt.Errorf("authenticate run_as: %w", err)
+	}
+	if len(runAsCtx) == 0 {
+		// A context-less POST would log the service user in with no RBAC
+		// identity; refuse instead of sending {}.
+		return fmt.Errorf("authenticate run_as: the authorization context is empty; check auth.run_as mappings")
+	}
+	body, err := json.Marshal(runAsCtx)
+	if err != nil {
+		return err
+	}
+	url := c.baseURL() + "/security/user/authenticate/run_as"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth(c.user, c.password)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("authenticate run_as: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("authenticate run_as: HTTP %d (is the api user allowed run_as — PUT /security/users/<id>/run_as?allow_run_as=true — and do RBAC rules match the authorization context?)", resp.StatusCode)
+	}
+	return c.storeToken(resp)
+}
+
+func (c *Client) storeToken(resp *http.Response) error {
 	var ar authResponse
 	if err := json.NewDecoder(resp.Body).Decode(&ar); err != nil {
 		return fmt.Errorf("authenticate decode: %w", err)
