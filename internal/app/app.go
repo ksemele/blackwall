@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/ksemele/blackwall/internal/ui/footer"
+	"github.com/ksemele/blackwall/internal/ui/safe"
 	"github.com/ksemele/blackwall/internal/ui/statusbar"
 	"github.com/ksemele/blackwall/internal/ui/styles"
 	"github.com/ksemele/blackwall/internal/ui/tabbar"
@@ -61,6 +62,11 @@ type Model struct {
 
 	footerMsg string // transient confirmation shown in statusbar area
 
+	// statusMsg is a transient view confirmation (app.StatusMsg) shown in the
+	// statusbar area; statusSeq invalidates timeouts of superseded messages.
+	statusMsg string
+	statusSeq int
+
 	// switching names the context a switch is in flight to; further
 	// switch requests are rejected until it finishes.
 	switching string
@@ -102,6 +108,13 @@ func (m *Model) Init() tea.Cmd {
 // chromeRows is what View() draws around the active view: tab bar, status
 // line and rule on top, rule and key hints at the bottom.
 const chromeRows = 5
+
+// statusMsgTTL is how long a StatusMsg confirmation stays visible.
+const statusMsgTTL = 3 * time.Second
+
+// statusClearMsg is the internal timeout follow-up of a StatusMsg; the seq
+// guard makes a late timeout of a superseded message a no-op.
+type statusClearMsg struct{ seq int }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Track terminal size for right-aligned layout and footer pinning.
@@ -228,6 +241,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.Active().Init()
 		}
 
+	case StatusMsg:
+		m.statusSeq++
+		m.statusMsg = msg.Text
+		seq := m.statusSeq
+		return m, tea.Tick(statusMsgTTL, func(time.Time) tea.Msg { return statusClearMsg{seq: seq} })
+
+	case statusClearMsg:
+		if msg.seq == m.statusSeq {
+			m.statusMsg = ""
+		}
+		return m, nil
+
 	case BackMsg:
 		if m.helpOpen {
 			m.helpOpen = false
@@ -327,6 +352,9 @@ func (m *Model) View() string {
 	headerParts := []string{tab, status, rule}
 	if m.footerMsg != "" {
 		headerParts = append(headerParts, styles.Active.Render(m.footerMsg))
+	}
+	if m.statusMsg != "" {
+		headerParts = append(headerParts, styles.Active.Render(safe.Line(m.statusMsg)))
 	}
 	header := strings.Join(headerParts, "\n")
 	bottom := rule + "\n" + foot

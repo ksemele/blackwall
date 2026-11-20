@@ -1,7 +1,9 @@
 package alerts
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"strings"
 	"testing"
@@ -387,5 +389,47 @@ func TestRender_StripsControlsFromIndexerText(t *testing.T) {
 		if strings.Contains(out, bad) {
 			t.Errorf("view contains %q: %q", bad, out)
 		}
+	}
+}
+
+func TestCard_CopyKeySurfacesStatusCmdAndHint(t *testing.T) {
+	a := alert("A", 1, 7, "002", "host", "desc")
+	a.FullLog = "full log line"
+	f := &fakeSearcher{results: [][]indexer.Alert{{a}}}
+	v := newTestView(f)
+	drain(t, v, v.Init())
+	if _, cmd := v.Update(key("enter")); cmd != nil {
+		t.Fatal("enter should not return a command")
+	}
+	if v.card == nil {
+		t.Fatal("card should be open")
+	}
+	var buf bytes.Buffer
+	v.card.copyOut = &buf
+
+	var copyHint bool
+	for _, h := range v.Hints() {
+		if h.Key == "y" && h.Desc == "copy" {
+			copyHint = true
+		}
+	}
+	if !copyHint {
+		t.Errorf("footer hints missing `y copy`: %v", v.Hints())
+	}
+
+	_, cmd := v.Update(key("y"))
+	if cmd == nil {
+		t.Fatal("y must return a command from the view")
+	}
+	msg := cmd()
+	status, ok := msg.(app.StatusMsg)
+	if !ok {
+		t.Fatalf("expected app.StatusMsg, got %T", msg)
+	}
+	if !strings.Contains(status.Text, "copied") {
+		t.Errorf("status = %q", status.Text)
+	}
+	if !strings.Contains(buf.String(), base64.StdEncoding.EncodeToString([]byte("full log line"))) {
+		t.Errorf("sequence = %q", buf.String())
 	}
 }

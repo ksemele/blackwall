@@ -1,6 +1,8 @@
 package alerts
 
 import (
+	"bytes"
+	"encoding/base64"
 	"strings"
 	"testing"
 	"time"
@@ -8,7 +10,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/ksemele/blackwall/internal/app"
 	"github.com/ksemele/blackwall/internal/indexer"
+	"github.com/ksemele/blackwall/internal/ui/safe"
 )
 
 func richAlert() indexer.Alert {
@@ -132,4 +136,85 @@ func TestCard_ShrinkingContentAfterScrollDoesNotPanic(t *testing.T) {
 	c.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
 	c.setSize(300, 12)
 	_ = c.view()
+}
+
+func TestCard_CopyKey_WritesSequenceAndReports(t *testing.T) {
+	var buf bytes.Buffer
+	c := newCard(richAlert(), 100, 0)
+	c.copyOut = &buf
+
+	cmd := c.handleKey(key("y"))
+	if cmd == nil {
+		t.Fatal("y must return a command")
+	}
+	msg := cmd()
+	status, ok := msg.(app.StatusMsg)
+	if !ok {
+		t.Fatalf("expected app.StatusMsg, got %T", msg)
+	}
+	wantSeq := osc52Copy(safe.Block(richAlert().FullLog))
+	if buf.String() != wantSeq {
+		t.Errorf("wrote %q, want %q", buf.String(), wantSeq)
+	}
+	if !strings.Contains(status.Text, "copied") || !strings.Contains(status.Text, "clipboard") {
+		t.Errorf("status = %q, want a copied confirmation", status.Text)
+	}
+	// Scroll keys keep working and return no command.
+	if cmd := c.handleKey(key("j")); cmd != nil {
+		t.Errorf("j returned an unexpected command")
+	}
+}
+
+func TestCard_CopyKey_TruncatesLongLog(t *testing.T) {
+	var buf bytes.Buffer
+	a := richAlert()
+	a.FullLog = strings.Repeat("x", maxCopyBytes+7)
+	c := newCard(a, 100, 0)
+	c.copyOut = &buf
+
+	status, ok := c.handleKey(key("y"))().(app.StatusMsg)
+	if !ok {
+		t.Fatal("expected app.StatusMsg")
+	}
+	payload, err := base64.StdEncoding.DecodeString(strings.TrimSuffix(strings.TrimPrefix(buf.String(), "\x1b]52;c;"), "\a"))
+	if err != nil {
+		t.Fatalf("payload not base64: %v", err)
+	}
+	if len(payload) != maxCopyBytes {
+		t.Errorf("copied %d bytes, want %d", len(payload), maxCopyBytes)
+	}
+	if !strings.Contains(status.Text, "truncated") {
+		t.Errorf("status = %q, want a truncation note", status.Text)
+	}
+}
+
+func TestCard_CopyKey_NoFullLog(t *testing.T) {
+	var buf bytes.Buffer
+	a := richAlert()
+	a.FullLog = ""
+	c := newCard(a, 100, 0)
+	c.copyOut = &buf
+
+	status, ok := c.handleKey(key("y"))().(app.StatusMsg)
+	if !ok {
+		t.Fatal("expected app.StatusMsg")
+	}
+	if !strings.Contains(status.Text, "no full log") {
+		t.Errorf("status = %q, want a no-full-log message", status.Text)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("nothing must be written, got %q", buf.String())
+	}
+}
+
+func TestCard_HintsIncludeCopy(t *testing.T) {
+	var found bool
+	for _, h := range newCard(richAlert(), 100, 0).hints() {
+		if h.Key == "y" && h.Desc == "copy" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("hints missing `y copy`: %v", newCard(richAlert(), 100, 0).hints())
+	}
 }

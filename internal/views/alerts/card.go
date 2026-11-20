@@ -2,6 +2,8 @@ package alerts
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"sort"
 	"strings"
 
@@ -20,10 +22,15 @@ type card struct {
 	alert indexer.Alert
 	width int
 	sl    scroll.List
+	// copyOut receives the OSC 52 sequence on `y`. Production uses
+	// os.Stderr: the TUI renders its frames to stdout, so writing the
+	// sequence to a different stream keeps it from interleaving with a
+	// half-written frame. Tests inject a buffer.
+	copyOut io.Writer
 }
 
 func newCard(a indexer.Alert, width, height int) *card {
-	c := &card{alert: a, sl: scroll.List{FooterRows: 1}}
+	c := &card{alert: a, sl: scroll.List{FooterRows: 1}, copyOut: os.Stderr}
 	c.setSize(width, height)
 	return c
 }
@@ -33,10 +40,17 @@ func (c *card) setSize(width, height int) {
 	c.sl.SetSize(height)
 }
 
-func (c *card) handleKey(msg tea.KeyMsg) { c.sl.HandleKey(msg, len(c.lines())) }
+// handleKey scrolls the card; `y` copies the full log to the clipboard.
+func (c *card) handleKey(msg tea.KeyMsg) tea.Cmd {
+	if msg.String() == "y" {
+		return c.copyCmd()
+	}
+	c.sl.HandleKey(msg, len(c.lines()))
+	return nil
+}
 
 func (c *card) hints() []footer.Hint {
-	return []footer.Hint{{Key: "esc", Desc: "back"}, {Key: "j/k", Desc: "scroll"}, {Key: "g/G", Desc: "top/bottom"}}
+	return []footer.Hint{{Key: "esc", Desc: "back"}, {Key: "j/k", Desc: "scroll"}, {Key: "g/G", Desc: "top/bottom"}, {Key: "y", Desc: "copy"}}
 }
 
 func (c *card) view() string {

@@ -10,6 +10,12 @@ type SwitchToDetailMsg struct{ AgentID string }
 // BackMsg pops a sub-screen (e.g. agent detail) back to its parent.
 type BackMsg struct{}
 
+// StatusMsg asks the app to show a short confirmation in the status-bar
+// area (e.g. "copied 123 bytes to clipboard"). Views send it from their
+// commands; the app clears it after a few seconds or when a newer
+// StatusMsg arrives.
+type StatusMsg struct{ Text string }
+
 // ContextChangedMsg announces a context switch initiated from `:contexts`.
 type ContextChangedMsg struct{ Name string }
 

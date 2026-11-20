@@ -91,3 +91,13 @@ example a `/` prompt), so global hotkeys such as `q`, digits and `p` do not fire
 Views that need a private timer use their own tick message with a generation
 counter (as `:alerts` does) instead of `tickcmd.TickMsg`, so stale ticks from a
 previous cycle are ignored.
+
+## Transient status confirmations
+
+A view reports a short confirmation (e.g. the alert card's `y` clipboard copy)
+by returning it from its command as `app.StatusMsg{Text: ...}`. The app renders
+it in the statusbar area for a few seconds (`statusMsgTTL`); a generation
+counter keeps a timeout of a superseded message from clearing the current one.
+Terminal-facing escape sequences that are not screen output — the alert card's
+OSC 52 copy sequence — are written to stderr, next to but never interleaved
+with the frames the renderer writes to stdout.
