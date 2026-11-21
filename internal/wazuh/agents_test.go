@@ -30,7 +30,7 @@ func TestListAgents_OK(t *testing.T) {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	agents, err := c.ListAgents(context.Background())
@@ -50,7 +50,7 @@ func TestListAgents_ContextCancel(t *testing.T) {
 		// Block forever; cancellation should terminate the request.
 		<-r.Context().Done()
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 	c.token = "tok" // skip Authenticate to keep test focused on the cancel path
 	c.tokenExp = neverExpire()
@@ -80,7 +80,7 @@ func TestGetAgent_OK(t *testing.T) {
 			}}})
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	got, err := c.GetAgent(context.Background(), "001")
@@ -104,7 +104,7 @@ func TestGetAgent_NotFound(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(singleAgentResponse{})
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	_, err := c.GetAgent(context.Background(), "999")
@@ -130,7 +130,7 @@ func TestDoAuthed_RetriesOn401(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(agentsResponse{})
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	if _, err := c.ListAgents(context.Background()); err != nil {

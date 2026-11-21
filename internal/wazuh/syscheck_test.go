@@ -25,7 +25,7 @@ func TestGetSyscheckLastScan_OK(t *testing.T) {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	scan, err := c.GetSyscheckLastScan(context.Background(), "001")
@@ -46,7 +46,7 @@ func TestGetSyscheckLastScan_NonOK(t *testing.T) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	if _, err := c.GetSyscheckLastScan(context.Background(), "001"); err == nil {
@@ -76,7 +76,7 @@ func TestListSyscheckEntries_OK(t *testing.T) {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	entries, err := c.ListSyscheckEntries(context.Background(), "001")
@@ -97,7 +97,7 @@ func TestListSyscheckEntries_NonOK(t *testing.T) {
 			w.WriteHeader(http.StatusForbidden)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	if _, err := c.ListSyscheckEntries(context.Background(), "001"); err == nil {

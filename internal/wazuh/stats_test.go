@@ -15,7 +15,7 @@ func TestGetAgentStats_NonOK(t *testing.T) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	if _, err := c.GetAgentStats(context.Background(), "001"); err == nil {
@@ -32,7 +32,7 @@ func TestGetLogcollectorStats_NonOK(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	if _, err := c.GetLogcollectorStats(context.Background(), "001"); err == nil {

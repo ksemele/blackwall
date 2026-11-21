@@ -19,15 +19,23 @@ type Client struct {
 	port                 int
 	scheme               string // "https"; tests switch to "http"
 	http                 *http.Client
+	tokens               TokenSource // set when indexer auth is OIDC; nil → basic auth
 }
 
-// New builds a Client from the indexer subsystem config.
-func New(sub config.IndexerSubsystem) (*Client, error) {
+// TokenSource supplies bearer tokens for SSO sessions (see internal/auth).
+// The provider picks the ID token or the access token per auth.token.
+type TokenSource interface {
+	Token(ctx context.Context) (string, error)
+}
+
+// New builds a Client from the indexer subsystem config. tokens must be
+// non-nil exactly when sub.Auth is set (config.Validate enforces the pair).
+func New(sub config.IndexerSubsystem, tokens TokenSource) (*Client, error) {
 	h, err := httpclient.New(sub.TLS)
 	if err != nil {
 		return nil, err
 	}
-	return &Client{host: sub.Server, port: sub.Port, user: sub.User, password: sub.Password, scheme: "https", http: h}, nil
+	return &Client{host: sub.Server, port: sub.Port, user: sub.User, password: sub.Password, scheme: "https", http: h, tokens: tokens}, nil
 }
 
 // Addr is "host:port" for the status line.
@@ -53,7 +61,15 @@ func (c *Client) SearchAlerts(ctx context.Context, q AlertQuery) ([]Alert, error
 	if err != nil {
 		return nil, err
 	}
-	req.SetBasicAuth(c.user, c.password)
+	if c.tokens != nil {
+		tok, err := c.tokens.Token(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("indexer search: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+tok)
+	} else {
+		req.SetBasicAuth(c.user, c.password)
+	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.http.Do(req)

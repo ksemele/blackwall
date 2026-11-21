@@ -29,7 +29,7 @@ func TestGetHardware_OK(t *testing.T) {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	hw, err := c.GetHardware(context.Background(), "001")
@@ -50,7 +50,7 @@ func TestGetHardware_NonOK(t *testing.T) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	if _, err := c.GetHardware(context.Background(), "001"); err == nil {
@@ -74,7 +74,7 @@ func TestGetOSInfo_OK(t *testing.T) {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	info, err := c.GetOSInfo(context.Background(), "001")
@@ -108,7 +108,7 @@ func TestListProcesses_OK(t *testing.T) {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	procs, err := c.ListProcesses(context.Background(), "001")
@@ -138,7 +138,7 @@ func TestListPackages_OK(t *testing.T) {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	pkgs, err := c.ListPackages(context.Background(), "001")
@@ -163,7 +163,7 @@ func TestListPorts_OK(t *testing.T) {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	ports, err := c.ListPorts(context.Background(), "001")
@@ -190,7 +190,7 @@ func TestListNetiface_OK(t *testing.T) {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	ifaces, err := c.ListNetiface(context.Background(), "001")
@@ -217,7 +217,7 @@ func TestListNetaddr_OK(t *testing.T) {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 	})
-	c, _ := New(subFromServer(srv, "u", "p"))
+	c, _ := New(subFromServer(srv, "u", "p"), nil)
 	c.insecureScheme = "http"
 
 	addrs, err := c.ListNetaddr(context.Background(), "001")
