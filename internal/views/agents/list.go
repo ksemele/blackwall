@@ -4,6 +4,7 @@ package agents
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -49,7 +50,21 @@ type Model struct {
 	offset          int // first visible row
 	filter          string
 	filtering       bool
+	sort            SortMode
 }
+
+// SortMode orders the agents list; `s` in the list cycles through it.
+type SortMode int
+
+const (
+	sortAPI      SortMode = iota // keep the order the Wazuh API returned
+	sortName                     // by name, case-insensitive
+	sortStatus                   // broken first: disconnected, never_connected, pending, active
+	sortLastSeen                 // by last keep-alive, oldest first
+	sortModeCount
+)
+
+func (s SortMode) next() SortMode { return (s + 1) % sortModeCount }
 
 func New(c Client, refresh time.Duration) *Model {
 	if refresh <= 0 {
@@ -64,6 +79,7 @@ func (m *Model) Hints() []footer.Hint {
 	return []footer.Hint{
 		{Key: "↑↓", Desc: "nav"},
 		{Key: "↵", Desc: "details"},
+		{Key: "s", Desc: "sort"},
 		{Key: "p", Desc: "pause"},
 		{Key: "/", Desc: "filter"},
 		{Key: "?", Desc: "help"},
@@ -114,14 +130,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			selID = vis[m.cursor].ID
 		}
 		m.agents = msg.Agents
-		vis := m.visible()
-		for i, a := range vis {
-			if a.ID == selID {
-				m.cursor = i
-				break
-			}
-		}
-		m.cursor = max(min(m.cursor, len(vis)-1), 0)
+		m.reanchor(selID)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -186,10 +195,36 @@ func (m *Model) key(msg tea.KeyMsg) tea.Cmd {
 		m.cursor, m.offset = 0, 0
 	case "p":
 		m.paused = !m.paused
+	case "s":
+		m.cycleSort()
 	case "ctrl+r":
 		return m.fetchCmd()
 	}
 	return nil
+}
+
+// cycleSort advances the sort mode; the cursor follows the selected agent.
+func (m *Model) cycleSort() {
+	selID := ""
+	if vis := m.visible(); m.cursor < len(vis) {
+		selID = vis[m.cursor].ID
+	}
+	m.sort = m.sort.next()
+	m.reanchor(selID)
+}
+
+// reanchor moves the cursor onto the agent with ID selID in the current
+// visible list. When that agent is gone the cursor stays on its row number,
+// clamped into range.
+func (m *Model) reanchor(selID string) {
+	vis := m.visible()
+	m.cursor = max(min(m.cursor, len(vis)-1), 0)
+	for i, a := range vis {
+		if a.ID == selID {
+			m.cursor = i
+			break
+		}
+	}
 }
 
 // pageSize is how far PgUp/PgDn move: half of the rows on screen.
@@ -200,23 +235,77 @@ func (m *Model) pageSize() int {
 	return max((m.height-m.fixedRows())/2, 1)
 }
 
-// visible returns the agents that pass the text filter.
+// visible returns the agents that pass the text filter, ordered by the
+// current sort mode. API mode keeps the order the API returned; the other
+// modes sort a copy so m.agents stays in API order.
 func (m *Model) visible() []wazuh.Agent {
-	if m.filter == "" {
-		return m.agents
-	}
-	f := strings.ToLower(m.filter)
-	var out []wazuh.Agent
-	for _, a := range m.agents {
-		hay := strings.ToLower(strings.Join([]string{
-			a.ID, a.Name, a.IP, a.Status, a.Version, a.OS.Name, a.OS.Version,
-			strings.Join(a.Group, " "),
-		}, " "))
-		if strings.Contains(hay, f) {
-			out = append(out, a)
+	out := m.agents
+	if m.filter != "" {
+		f := strings.ToLower(m.filter)
+		out = nil
+		for _, a := range m.agents {
+			hay := strings.ToLower(strings.Join([]string{
+				a.ID, a.Name, a.IP, a.Status, a.Version, a.OS.Name, a.OS.Version,
+				strings.Join(a.Group, " "),
+			}, " "))
+			if strings.Contains(hay, f) {
+				out = append(out, a)
+			}
 		}
+	} else if m.sort != sortAPI {
+		out = make([]wazuh.Agent, len(m.agents))
+		copy(out, m.agents)
+	}
+	if m.sort != sortAPI {
+		sortAgents(out, m.sort)
 	}
 	return out
+}
+
+// statusRank orders statuses worst-first so broken agents land on top.
+// Unknown statuses rank with the broken ones.
+func statusRank(status string) int {
+	switch status {
+	case "never_connected":
+		return 1
+	case "pending":
+		return 2
+	case "active":
+		return 3
+	default: // disconnected and anything unexpected
+		return 0
+	}
+}
+
+// sortAgents orders a slice by mode; every mode breaks ties on ID, so the
+// result is deterministic and does not depend on the input order.
+func sortAgents(a []wazuh.Agent, mode SortMode) {
+	switch mode {
+	case sortName:
+		sort.Slice(a, func(i, j int) bool {
+			ni, nj := strings.ToLower(a[i].Name), strings.ToLower(a[j].Name)
+			if ni != nj {
+				return ni < nj
+			}
+			return a[i].ID < a[j].ID
+		})
+	case sortStatus:
+		sort.Slice(a, func(i, j int) bool {
+			ri, rj := statusRank(a[i].Status), statusRank(a[j].Status)
+			if ri != rj {
+				return ri < rj
+			}
+			return a[i].ID < a[j].ID
+		})
+	case sortLastSeen:
+		sort.Slice(a, func(i, j int) bool {
+			li, lj := a[i].LastKeepAlive, a[j].LastKeepAlive
+			if !li.Equal(lj) {
+				return li.Before(lj)
+			}
+			return a[i].ID < a[j].ID
+		})
+	}
 }
 
 // fixedRows counts the lines View draws above the agent rows.
@@ -264,6 +353,20 @@ var agentCols = []table.Col{
 	{Title: "LAST SEEN", Min: 24, Flex: true},
 }
 
+// sortCol returns the agentCols index a sort mode orders by, or -1 for API
+// order (no column, no marker).
+func sortCol(mode SortMode) int {
+	switch mode {
+	case sortName:
+		return 1
+	case sortStatus:
+		return 3
+	case sortLastSeen:
+		return 6
+	}
+	return -1
+}
+
 func (m *Model) View() string {
 	var b strings.Builder
 	rows := m.visible()
@@ -295,8 +398,14 @@ func (m *Model) View() string {
 		b.WriteString(styles.Error.Render(fit("⚠ "+safe.Line(m.lastErr), m.width)) + "\n")
 	}
 
-	widths := table.Widths(agentCols, m.width)
-	b.WriteString(table.Header(agentCols, widths))
+	cols := agentCols
+	if c := sortCol(m.sort); c >= 0 {
+		cols = make([]table.Col, len(agentCols))
+		copy(cols, agentCols)
+		cols[c].Title += " ▲"
+	}
+	widths := table.Widths(cols, m.width)
+	b.WriteString(table.Header(cols, widths))
 	b.WriteByte('\n')
 
 	space := len(rows)

@@ -62,6 +62,7 @@ func (v *View) ReplaceClient(c Client) {
 	v.list.lastErr = ""
 	v.list.offset = 0
 	v.list.filter, v.list.filtering = "", false
+	v.list.sort = sortAPI
 	v.detail = nil
 }
 
