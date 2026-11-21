@@ -80,6 +80,9 @@ changelog:
       order: 999
 
 release:
+  # A tag with a semver pre-release suffix (v0.2.0-rc.1) becomes a GitHub
+  # pre-release, not "Latest"; the cask below skips it too (skip_upload: auto).
+  prerelease: auto
   footer: |
     ## Verify
 

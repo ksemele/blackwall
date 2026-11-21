@@ -602,6 +602,10 @@ It needs the repo secret `HOMEBREW_TAP_GITHUB_TOKEN` (fine-grained PAT,
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
+A tag with a pre-release suffix (`v0.2.0-rc.1`) is published as a GitHub
+pre-release: it does not become Latest and the Homebrew cask is not updated.
+Ship the final version by tagging the same commit without the suffix.
+
 Dry run locally (no upload; the token only has to be set):
 `HOMEBREW_TAP_GITHUB_TOKEN=x goreleaser release --snapshot --clean`.
 
